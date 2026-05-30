@@ -59,10 +59,13 @@ http://127.0.0.1:3030/?token=<access-token>
 
 The Web console can:
 
-- create sessions from workspace paths
+- create sessions from configured workspace roots
+- browse workspace directories
 - send messages to Codex
-- view session messages and status
-- approve or deny pending Codex requests
+- view session messages, runtime status, Codex config, thread id, and turn id
+- view pending and historical Codex approvals
+- stream assistant output while a turn is running
+- rename and delete sessions
 - interrupt a running turn
 
 ## CLI

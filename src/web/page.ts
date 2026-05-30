@@ -36,9 +36,7 @@ export function webPage(): string {
       background: var(--bg);
       color: var(--text);
     }
-    button, input, textarea, select {
-      font: inherit;
-    }
+    button, input, textarea, select { font: inherit; }
     button {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -56,7 +54,7 @@ export function webPage(): string {
       border-color: var(--danger);
       color: var(--danger);
     }
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -70,7 +68,7 @@ export function webPage(): string {
     }
     .shell {
       display: grid;
-      grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
+      grid-template-columns: minmax(270px, 360px) minmax(0, 1fr);
       min-height: 100vh;
     }
     .side {
@@ -80,8 +78,9 @@ export function webPage(): string {
     }
     .main {
       display: grid;
-      grid-template-rows: auto 1fr auto;
+      grid-template-rows: auto auto 1fr auto;
       min-width: 0;
+      min-height: 100vh;
     }
     .topbar {
       display: flex;
@@ -95,9 +94,7 @@ export function webPage(): string {
       font-weight: 700;
       font-size: 18px;
     }
-    .muted {
-      color: var(--muted);
-    }
+    .muted { color: var(--muted); }
     .stack {
       display: grid;
       gap: 10px;
@@ -108,25 +105,59 @@ export function webPage(): string {
       align-items: center;
       flex-wrap: wrap;
     }
+    .row > input { flex: 1 1 180px; }
+    .row > button { flex: 0 0 auto; }
     .session {
       width: 100%;
       text-align: left;
       display: grid;
       gap: 4px;
     }
-    .session.active {
-      border-color: var(--accent);
-    }
-    .session-name {
-      font-weight: 650;
-    }
+    .session.active { border-color: var(--accent); }
+    .session-name { font-weight: 650; }
     .pill {
       border: 1px solid var(--line);
       border-radius: 999px;
       padding: 2px 8px;
       font-size: 12px;
       color: var(--muted);
+      width: fit-content;
     }
+    .dir-list {
+      display: grid;
+      gap: 6px;
+      max-height: 180px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px;
+      background: color-mix(in srgb, var(--panel) 70%, var(--bg));
+    }
+    .dir-list button {
+      width: 100%;
+      text-align: left;
+      padding: 6px 8px;
+    }
+    .details {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .approvals {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .approval {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--panel);
+      display: grid;
+      gap: 8px;
+    }
+    .approval.resolved { opacity: 0.78; }
     .messages {
       padding: 16px;
       overflow: auto;
@@ -143,30 +174,17 @@ export function webPage(): string {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    .msg.user {
-      border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-    }
+    .msg.user { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
     .msg.tool {
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       background: var(--code);
     }
-    .msg.error {
-      border-color: var(--danger);
-    }
+    .msg.error { border-color: var(--danger); }
+    .msg.streaming { border-style: dashed; }
     .composer {
       border-top: 1px solid var(--line);
       padding: 12px 16px;
       background: color-mix(in srgb, var(--bg) 85%, var(--panel));
-    }
-    .approvals {
-      padding: 0 16px 12px;
-    }
-    .approval {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px 12px;
-      background: var(--panel);
-      margin-top: 10px;
     }
     pre {
       white-space: pre-wrap;
@@ -174,17 +192,16 @@ export function webPage(): string {
       background: var(--code);
       padding: 8px;
       border-radius: 6px;
-      margin: 8px 0;
+      margin: 0;
     }
     @media (max-width: 760px) {
-      .shell {
-        grid-template-columns: 1fr;
-      }
+      .shell { grid-template-columns: 1fr; }
       .side {
         border-right: 0;
         border-bottom: 1px solid var(--line);
-        max-height: 45vh;
+        max-height: 48vh;
       }
+      .topbar { align-items: flex-start; }
     }
   </style>
 </head>
@@ -197,7 +214,12 @@ export function webPage(): string {
           <div class="muted" id="status">Loading</div>
         </div>
         <form id="new-session" class="stack">
-          <input name="cwd" placeholder="/home/ilove/Documents/repos/project" autocomplete="off">
+          <select id="workspace-root" name="root"></select>
+          <div class="row">
+            <input id="cwd" name="cwd" placeholder="Workspace directory" autocomplete="off">
+            <button id="root-dir" type="button">Root</button>
+          </div>
+          <div id="dirs" class="dir-list"></div>
           <input name="title" placeholder="Session title" autocomplete="off">
           <button class="primary" type="submit">New Session</button>
         </form>
@@ -212,13 +234,19 @@ export function webPage(): string {
         <div>
           <div class="title" id="session-title">No session</div>
           <div class="muted" id="session-meta">Create or select a session.</div>
+          <div class="details" id="session-detail"></div>
         </div>
-        <button id="stop" class="danger" type="button">Stop</button>
+        <div class="row">
+          <button id="rename" type="button">Rename</button>
+          <button id="stop" class="danger" type="button">Stop</button>
+          <button id="delete" class="danger" type="button">Delete</button>
+        </div>
       </header>
-      <section>
-        <div class="approvals" id="approvals"></div>
-        <div class="messages" id="messages"></div>
+      <section class="approvals">
+        <div id="pending-approvals" class="stack"></div>
+        <div id="approval-history" class="stack"></div>
       </section>
+      <section class="messages" id="messages"></section>
       <form id="composer" class="composer stack">
         <textarea name="text" placeholder="Send a message to Codex"></textarea>
         <div class="row">
@@ -235,36 +263,113 @@ export function webPage(): string {
     let activeSessionId = localStorage.getItem('cx_tg_session') || '';
     let sessions = [];
     let messages = [];
-    let approvals = [];
+    let pendingApprovals = [];
+    let approvalHistory = [];
+    let workspaces = [];
+    let currentSession = null;
+    let currentRoot = localStorage.getItem('cx_tg_root') || '';
+    let currentPath = '';
+    let streamBuffer = '';
     let eventSource = null;
 
     const $ = (id) => document.getElementById(id);
+
     const api = async (path, options = {}) => {
       const res = await fetch(path, { ...options, headers: { ...headers, ...(options.headers || {}) } });
-      if (!res.ok) throw new Error(await res.text());
-      return res.headers.get('content-type')?.includes('application/json') ? res.json() : res.text();
+      const text = await res.text();
+      if (!res.ok) {
+        try {
+          const payload = JSON.parse(text);
+          throw new Error(payload.error?.message || text);
+        } catch (error) {
+          if (error instanceof SyntaxError) throw new Error(text || res.statusText);
+          throw error;
+        }
+      }
+      return res.headers.get('content-type')?.includes('application/json') && text ? JSON.parse(text) : text;
     };
 
     async function loadAll() {
       const status = await api('/api/status');
       $('status').textContent = status.stats.sessions + ' sessions · ' + status.stats.pendingApprovals + ' approvals';
+      await loadWorkspaces();
       sessions = await api('/api/sessions');
+      if (activeSessionId && !sessions.some((session) => session.id === activeSessionId)) activeSessionId = '';
       if (!activeSessionId && sessions[0]) activeSessionId = sessions[0].id;
       renderSessions();
       await loadSession();
     }
 
+    async function loadWorkspaces() {
+      workspaces = await api('/api/workspaces');
+      if (!workspaces.length) return;
+      if (!workspaces.some((workspace) => workspace.path === currentRoot)) currentRoot = workspaces[0].path;
+      localStorage.setItem('cx_tg_root', currentRoot);
+      renderWorkspaceRoots();
+      await loadDirs(currentPath);
+    }
+
+    function renderWorkspaceRoots() {
+      const select = $('workspace-root');
+      select.innerHTML = '';
+      for (const workspace of workspaces) {
+        const option = document.createElement('option');
+        option.value = workspace.path;
+        option.textContent = workspace.name + ' · ' + workspace.path;
+        select.appendChild(option);
+      }
+      select.value = currentRoot;
+    }
+
+    async function loadDirs(path) {
+      if (!currentRoot) return;
+      const data = await api('/api/files?root=' + encodeURIComponent(currentRoot) + '&path=' + encodeURIComponent(path || ''));
+      currentPath = data.relativePath || '';
+      $('cwd').value = data.current;
+      renderDirs(data);
+    }
+
+    function renderDirs(data) {
+      const box = $('dirs');
+      box.innerHTML = '';
+      if (data.relativePath) {
+        const up = document.createElement('button');
+        up.type = 'button';
+        up.textContent = '..';
+        up.onclick = () => loadDirs(data.parentPath).catch(alert);
+        box.appendChild(up);
+      }
+      for (const entry of data.entries) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = entry.name;
+        btn.onclick = () => loadDirs(entry.relativePath).catch(alert);
+        box.appendChild(btn);
+      }
+      if (!box.childElementCount) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = 'No child directories';
+        box.appendChild(empty);
+      }
+    }
+
     async function loadSession() {
+      streamBuffer = '';
       if (!activeSessionId) {
+        currentSession = null;
         messages = [];
-        approvals = [];
+        pendingApprovals = [];
+        approvalHistory = [];
         renderSession();
         return;
       }
-      const data = await api('/api/sessions/' + activeSessionId);
+      const data = await api('/api/sessions/' + encodeURIComponent(activeSessionId));
+      currentSession = data.session;
       messages = data.messages;
-      approvals = data.approvals;
-      renderSession(data.session);
+      pendingApprovals = data.approvals;
+      approvalHistory = await api('/api/approvals?sessionId=' + encodeURIComponent(activeSessionId) + '&status=all&limit=50');
+      renderSession();
       connectEvents();
     }
 
@@ -273,10 +378,16 @@ export function webPage(): string {
       for (const session of sessions) {
         const btn = document.createElement('button');
         btn.className = 'session' + (session.id === activeSessionId ? ' active' : '');
-        btn.innerHTML = '<span class="session-name"></span><span class="muted"></span><span class="pill"></span>';
-        btn.querySelector('.session-name').textContent = session.title;
-        btn.querySelector('.muted').textContent = session.cwd;
-        btn.querySelector('.pill').textContent = session.status;
+        const name = document.createElement('span');
+        name.className = 'session-name';
+        name.textContent = session.title;
+        const cwd = document.createElement('span');
+        cwd.className = 'muted';
+        cwd.textContent = session.cwd;
+        const pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.textContent = session.status;
+        btn.append(name, cwd, pill);
         btn.onclick = () => {
           activeSessionId = session.id;
           localStorage.setItem('cx_tg_session', activeSessionId);
@@ -287,50 +398,109 @@ export function webPage(): string {
       }
     }
 
-    function renderSession(session) {
-      if (!session) {
+    function renderSession() {
+      if (!currentSession) {
         $('session-title').textContent = 'No session';
         $('session-meta').textContent = 'Create or select a session.';
+        $('session-detail').textContent = '';
       } else {
-        $('session-title').textContent = session.title;
-        $('session-meta').textContent = session.cwd + ' · ' + session.status + ' · ' + session.id;
+        $('session-title').textContent = currentSession.title;
+        $('session-meta').textContent = currentSession.cwd + ' · ' + currentSession.status + ' · ' + currentSession.id;
+        const config = currentSession.config || {};
+        $('session-detail').textContent = [
+          'model ' + (config.model || '-'),
+          'sandbox ' + (config.sandbox || '-'),
+          'approval ' + (config.approvalPolicy || '-'),
+          'thread ' + (currentSession.codexThreadId || '-'),
+          'turn ' + (currentSession.currentTurnId || '-'),
+          'error ' + (currentSession.lastError || '-')
+        ].join(' · ');
       }
-      $('messages').innerHTML = '';
-      for (const message of messages) {
-        const div = document.createElement('div');
-        div.className = 'msg ' + message.role + (message.kind === 'error' ? ' error' : '');
-        div.textContent = '[' + message.role + ']\\n' + message.content;
-        $('messages').appendChild(div);
-      }
-      $('messages').scrollTop = $('messages').scrollHeight;
+      renderMessages();
       renderApprovals();
     }
 
+    function renderMessages() {
+      const box = $('messages');
+      box.innerHTML = '';
+      for (const message of messages) box.appendChild(messageNode(message));
+      if (streamBuffer) box.appendChild(streamingNode());
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function messageNode(message) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + message.role + (message.kind === 'error' ? ' error' : '');
+      div.textContent = '[' + message.role + ']\\n' + message.content;
+      return div;
+    }
+
+    function streamingNode() {
+      const div = document.createElement('div');
+      div.id = 'streaming-message';
+      div.className = 'msg assistant streaming';
+      div.textContent = '[assistant]\\n' + streamBuffer;
+      return div;
+    }
+
+    function appendDelta(delta) {
+      streamBuffer += delta;
+      let div = $('streaming-message');
+      if (!div) {
+        div = streamingNode();
+        $('messages').appendChild(div);
+      } else {
+        div.textContent = '[assistant]\\n' + streamBuffer;
+      }
+      $('messages').scrollTop = $('messages').scrollHeight;
+    }
+
     function renderApprovals() {
-      $('approvals').innerHTML = '';
+      renderApprovalList($('pending-approvals'), pendingApprovals, true);
+      renderApprovalList($('approval-history'), approvalHistory.filter((approval) => approval.status !== 'pending'), false);
+    }
+
+    function renderApprovalList(container, approvals, pending) {
+      container.innerHTML = '';
+      const title = document.createElement('div');
+      title.className = 'muted';
+      title.textContent = pending ? 'Pending approvals' : 'Approval history';
+      container.appendChild(title);
+      if (!approvals.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = pending ? 'No pending approvals' : 'No approval history';
+        container.appendChild(empty);
+        return;
+      }
       for (const approval of approvals) {
         const div = document.createElement('div');
-        div.className = 'approval';
+        div.className = 'approval' + (pending ? '' : ' resolved');
+        const head = document.createElement('div');
+        head.textContent = approval.toolName + ' · ' + approval.status + (approval.decision ? ' · ' + approval.decision : '');
         const pre = document.createElement('pre');
         pre.textContent = JSON.stringify(approval.input, null, 2);
-        const row = document.createElement('div');
-        row.className = 'row';
-        const allow = document.createElement('button');
-        allow.className = 'primary';
-        allow.textContent = approval.type === 'choice' ? 'Choose 1' : 'Allow';
-        allow.onclick = () => resolveApproval(approval.id, approval.type === 'choice' ? '0' : 'approved');
-        const deny = document.createElement('button');
-        deny.className = 'danger';
-        deny.textContent = approval.type === 'choice' ? 'Cancel' : 'Deny';
-        deny.onclick = () => resolveApproval(approval.id, 'denied');
-        row.append(allow, deny);
-        div.append('Approval: ' + approval.toolName, pre, row);
-        $('approvals').appendChild(div);
+        div.append(head, pre);
+        if (pending) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const allow = document.createElement('button');
+          allow.className = 'primary';
+          allow.textContent = approval.type === 'choice' ? 'Choose 1' : 'Allow';
+          allow.onclick = () => resolveApproval(approval.id, approval.type === 'choice' ? '0' : 'approved');
+          const deny = document.createElement('button');
+          deny.className = 'danger';
+          deny.textContent = approval.type === 'choice' ? 'Cancel' : 'Deny';
+          deny.onclick = () => resolveApproval(approval.id, approval.type === 'choice' ? 'cancel' : 'denied');
+          row.append(allow, deny);
+          div.appendChild(row);
+        }
+        container.appendChild(div);
       }
     }
 
     async function resolveApproval(id, decision) {
-      await api('/api/approvals/' + id + '/resolve', {
+      await api('/api/approvals/' + encodeURIComponent(id) + '/resolve', {
         method: 'POST',
         body: JSON.stringify({ decision })
       });
@@ -344,14 +514,49 @@ export function webPage(): string {
       eventSource = new EventSource(url);
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (['message.created', 'approval.created', 'approval.resolved', 'session.updated'].includes(data.type)) {
+        if (data.type === 'message.delta') {
+          appendDelta(String(data.payload?.delta || ''));
+          return;
+        }
+        if (data.type === 'session.deleted') {
+          activeSessionId = '';
+          localStorage.removeItem('cx_tg_session');
           loadAll().catch(console.error);
+          return;
+        }
+        if (['message.created', 'approval.created', 'approval.resolved', 'session.updated'].includes(data.type)) {
+          loadSession().catch(console.error);
         }
       };
     }
 
+    $('workspace-root').onchange = (event) => {
+      currentRoot = event.currentTarget.value;
+      currentPath = '';
+      localStorage.setItem('cx_tg_root', currentRoot);
+      loadDirs('').catch(alert);
+    };
+    $('root-dir').onclick = () => loadDirs('').catch(alert);
     $('refresh').onclick = () => loadAll().catch(alert);
-    $('stop').onclick = () => activeSessionId && api('/api/sessions/' + activeSessionId + '/interrupt', { method: 'POST' }).then(loadAll).catch(alert);
+    $('stop').onclick = () => activeSessionId && api('/api/sessions/' + encodeURIComponent(activeSessionId) + '/interrupt', { method: 'POST' }).then(loadAll).catch(alert);
+    $('rename').onclick = async () => {
+      if (!currentSession) return;
+      const title = prompt('Title', currentSession.title);
+      if (!title) return;
+      await api('/api/sessions/' + encodeURIComponent(currentSession.id), {
+        method: 'PATCH',
+        body: JSON.stringify({ title })
+      });
+      await loadAll();
+    };
+    $('delete').onclick = async () => {
+      if (!currentSession) return;
+      if (!confirm('Delete session ' + currentSession.title + '?')) return;
+      await api('/api/sessions/' + encodeURIComponent(currentSession.id), { method: 'DELETE' });
+      activeSessionId = '';
+      localStorage.removeItem('cx_tg_session');
+      await loadAll();
+    };
     $('new-session').onsubmit = async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
@@ -369,7 +574,7 @@ export function webPage(): string {
       if (!activeSessionId) return alert('Select a session');
       const text = new FormData(event.currentTarget).get('text');
       $('send-state').textContent = 'Sending';
-      await api('/api/sessions/' + activeSessionId + '/messages', {
+      await api('/api/sessions/' + encodeURIComponent(activeSessionId) + '/messages', {
         method: 'POST',
         body: JSON.stringify({ text })
       });

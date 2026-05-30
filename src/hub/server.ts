@@ -1,8 +1,10 @@
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { basename, join, relative, resolve } from 'node:path';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
 import { z } from 'zod';
-import { getSettingValue, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
+import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import { webPage } from '../web/page.js';
@@ -104,6 +106,40 @@ export class HubServer {
       },
       stats: this.hub.stats(),
     }));
+
+    app.get('/api/workspaces', (c) => c.json(this.config.workspace.roots.map((root, index) => ({
+      id: String(index),
+      name: basename(root) || root,
+      path: root,
+    }))));
+
+    app.get('/api/files', (c) => {
+      const root = workspaceRoot(this.config.workspace.roots, c.req.query('root'));
+      const path = c.req.query('path') || '';
+      const current = resolve(root, path);
+      if (!isPathInside(root, current)) throw new Error('Path must be inside the selected workspace root');
+      if (!existsSync(current)) throw new Error(`Path does not exist: ${current}`);
+      if (!statSync(current).isDirectory()) throw new Error(`Path is not a directory: ${current}`);
+      const entries = readdirSync(current, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((entry) => {
+          const absolutePath = join(current, entry.name);
+          return {
+            name: entry.name,
+            path: absolutePath,
+            relativePath: relative(root, absolutePath),
+          };
+        });
+      const rel = relative(root, current);
+      return c.json({
+        root,
+        current,
+        relativePath: rel,
+        parentPath: rel ? relative(root, resolve(current, '..')) : '',
+        entries,
+      });
+    });
 
     app.get('/api/settings', (c) => c.json({
       settings: maskSettings(this.config),
@@ -250,4 +286,11 @@ function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
 function errorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return z.prettifyError(error);
   return error instanceof Error ? error.message : String(error);
+}
+
+function workspaceRoot(roots: string[], input: string | undefined): string {
+  if (!input) return roots[0]!;
+  const root = roots.find((item) => item === input || item === resolve(input));
+  if (!root) throw new Error('Unknown workspace root');
+  return root;
 }

@@ -95,6 +95,8 @@ Main endpoints:
 
 ```text
 GET    /api/status
+GET    /api/workspaces
+GET    /api/files
 GET    /api/sessions
 POST   /api/sessions
 GET    /api/sessions/:id
