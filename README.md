@@ -63,6 +63,7 @@ The Web console can:
 - browse workspace directories
 - send messages to Codex
 - view session messages, runtime status, Codex config, thread id, and turn id
+- view active prompt queue state
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
 - reconnect the event stream with stored event replay

@@ -6,6 +6,7 @@ import { serve, type ServerType } from '@hono/node-server';
 import { z } from 'zod';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
+import type { PromptJobStatus } from '../domain/types.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import { webPage } from '../web/page.js';
 import { logger } from '../logger.js';
@@ -34,6 +35,7 @@ const resolveApprovalSchema = z.object({
 });
 
 const approvalStatusSchema = z.enum(['pending', 'resolved', 'expired']);
+const promptJobStatusSchema = z.enum(['queued', 'running', 'done', 'failed', 'canceled', 'active', 'all']);
 
 const claimControlSchema = z.object({
   controlType: controlTypeSchema,
@@ -189,6 +191,7 @@ export class HubServer {
         session,
         messages: this.hub.listMessages(session.id),
         approvals: this.hub.listApprovals({ sessionId: session.id, status: 'pending' }),
+        queue: this.hub.listPromptJobs(session.id, { statuses: ['running', 'queued'], limit: 50 }),
       });
     });
 
@@ -220,6 +223,14 @@ export class HubServer {
       limit: parseLimit(c.req.query('limit'), 200),
       afterId: c.req.query('afterId') || undefined,
     })));
+
+    app.get('/api/sessions/:id/queue', (c) => {
+      const status = promptJobStatusSchema.parse(c.req.query('status') || 'active');
+      return c.json(this.hub.listPromptJobs(c.req.param('id'), {
+        statuses: promptJobStatuses(status),
+        limit: parseLimit(c.req.query('limit'), 100),
+      }));
+    });
 
     app.post('/api/sessions/:id/messages', async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
@@ -320,6 +331,12 @@ function parseEventId(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
   return Math.max(Math.trunc(parsed), 0);
+}
+
+function promptJobStatuses(value: z.infer<typeof promptJobStatusSchema>): PromptJobStatus[] | undefined {
+  if (value === 'all') return undefined;
+  if (value === 'active') return ['running', 'queued'];
+  return [value];
 }
 
 function errorStatus(error: unknown): 400 | 404 | 409 | 500 {

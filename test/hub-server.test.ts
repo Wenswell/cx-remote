@@ -45,6 +45,44 @@ test('events endpoint replays stored events after a cursor', async () => {
   }
 });
 
+test('session queue API lists active prompt jobs', async () => {
+  const dbPath = tempDbPath();
+  const store = new Store(dbPath);
+  const config = createConfig(dbPath);
+  const events = new EventBus(store);
+  const permissions = new PermissionService(store, events, config);
+  const hub = new ControlHub(config, store, events, permissions);
+  const app = new HubServer(hub, config).createApp();
+
+  try {
+    const session = createSession(store, 'session-1', 'running');
+    const send = await app.request(`/api/sessions/${encodeURIComponent(session.id)}/messages`, {
+      method: 'POST',
+      headers: jsonHeaders(config),
+      body: JSON.stringify({ text: 'queued from api', controlType: 'cli' }),
+    });
+    assert.equal(send.status, 202);
+
+    const queue = await json<Array<{ text: string; status: string }>>(await app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}/queue`,
+      { headers: authHeaders(config) },
+    ));
+    assert.equal(queue.length, 1);
+    assert.equal(queue[0]?.text, 'queued from api');
+    assert.equal(queue[0]?.status, 'queued');
+
+    const detail = await json<{ queue: Array<{ text: string }> }>(await app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(config) },
+    ));
+    assert.equal(detail.queue[0]?.text, 'queued from api');
+  } finally {
+    await hub.shutdown();
+    store.close();
+    cleanupDb(dbPath);
+  }
+});
+
 async function readInitialSse(response: Response, abort: AbortController): Promise<string> {
   assert.ok(response.body);
   const reader = response.body.getReader();
@@ -64,14 +102,27 @@ async function readInitialSse(response: Response, abort: AbortController): Promi
   return text;
 }
 
-function createSession(store: Store, id = 'session-1'): Session {
+async function json<T>(response: Response): Promise<T> {
+  assert.ok(response.ok);
+  return await response.json() as T;
+}
+
+function authHeaders(config: AppConfig): Record<string, string> {
+  return { Authorization: `Bearer ${config.server.accessToken}` };
+}
+
+function jsonHeaders(config: AppConfig): Record<string, string> {
+  return { ...authHeaders(config), 'Content-Type': 'application/json' };
+}
+
+function createSession(store: Store, id = 'session-1', status: Session['status'] = 'idle'): Session {
   const now = Date.now();
   return store.createSession({
     id,
     title: 'Test session',
     cwd: process.cwd(),
     agent: 'codex',
-    status: 'idle',
+    status,
     codexThreadId: null,
     currentTurnId: null,
     controlOwner: null,

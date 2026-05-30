@@ -149,7 +149,7 @@ export function webPage(): string {
       display: grid;
       gap: 10px;
     }
-    .approval {
+    .approval, .queue-job {
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 10px 12px;
@@ -158,6 +158,7 @@ export function webPage(): string {
       gap: 8px;
     }
     .approval.resolved { opacity: 0.78; }
+    .queue-job.done, .queue-job.failed, .queue-job.canceled { opacity: 0.78; }
     .messages {
       padding: 16px;
       overflow: auto;
@@ -245,6 +246,7 @@ export function webPage(): string {
         </div>
       </header>
       <section class="approvals">
+        <div id="prompt-queue" class="stack"></div>
         <div id="pending-approvals" class="stack"></div>
         <div id="approval-history" class="stack"></div>
       </section>
@@ -273,6 +275,7 @@ export function webPage(): string {
     let messages = [];
     let pendingApprovals = [];
     let approvalHistory = [];
+    let promptQueue = [];
     let workspaces = [];
     let currentSession = null;
     let currentRoot = localStorage.getItem('cx_tg_root') || '';
@@ -369,6 +372,7 @@ export function webPage(): string {
         messages = [];
         pendingApprovals = [];
         approvalHistory = [];
+        promptQueue = [];
         renderSession();
         return;
       }
@@ -376,6 +380,7 @@ export function webPage(): string {
       currentSession = data.session;
       messages = data.messages;
       pendingApprovals = data.approvals;
+      promptQueue = data.queue || [];
       approvalHistory = await api('/api/approvals?sessionId=' + encodeURIComponent(activeSessionId) + '&status=all&limit=50');
       renderSession();
       connectEvents();
@@ -427,6 +432,7 @@ export function webPage(): string {
         ].join(' · ');
       }
       renderMessages();
+      renderPromptQueue();
       renderApprovals();
     }
 
@@ -469,6 +475,32 @@ export function webPage(): string {
     function renderApprovals() {
       renderApprovalList($('pending-approvals'), pendingApprovals, true);
       renderApprovalList($('approval-history'), approvalHistory.filter((approval) => approval.status !== 'pending'), false);
+    }
+
+    function renderPromptQueue() {
+      const container = $('prompt-queue');
+      container.innerHTML = '';
+      const title = document.createElement('div');
+      title.className = 'muted';
+      title.textContent = 'Prompt queue';
+      container.appendChild(title);
+      if (!promptQueue.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = 'No active prompt jobs';
+        container.appendChild(empty);
+        return;
+      }
+      promptQueue.forEach((job, index) => {
+        const div = document.createElement('div');
+        div.className = 'queue-job ' + job.status;
+        const head = document.createElement('div');
+        head.textContent = '#' + (index + 1) + ' · ' + job.status + ' · ' + job.source + ' · ' + new Date(job.createdAt).toLocaleString();
+        const pre = document.createElement('pre');
+        pre.textContent = job.text;
+        div.append(head, pre);
+        container.appendChild(div);
+      });
     }
 
     function renderApprovalList(container, approvals, pending) {
@@ -544,7 +576,8 @@ export function webPage(): string {
             return;
           }
         }
-        if (['approval.created', 'approval.resolved', 'session.control.updated'].includes(data.type)) {
+        if (['approval.created', 'approval.resolved', 'session.control.updated'].includes(data.type)
+          || (data.type === 'session.updated' && data.payload?.queuedPrompts !== undefined)) {
           loadSession().catch(console.error);
         }
       };

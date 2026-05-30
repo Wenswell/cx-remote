@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
 import type { Approval, CodexEvent, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
-import type { ApprovalQuery, MessageQuery, Store } from '../store/store.js';
+import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
 import { CodexRuntime } from '../agents/codex/runtime.js';
@@ -121,6 +121,11 @@ export class ControlHub {
   listEvents(afterId = 0, sessionId?: string) {
     if (sessionId) this.getSession(sessionId);
     return this.store.listEvents(afterId, sessionId);
+  }
+
+  listPromptJobs(sessionId: string, query: Omit<PromptJobQuery, 'sessionId'> = {}): PromptJob[] {
+    this.getSession(sessionId);
+    return this.store.listPromptJobs({ ...query, sessionId });
   }
 
   renameSession(sessionId: string, title: string): Session {
