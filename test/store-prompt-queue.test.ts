@@ -9,6 +9,9 @@ import { EventBus } from '../src/runtime/event-bus.js';
 import { ControlHub } from '../src/runtime/control-hub.js';
 import { PermissionService } from '../src/runtime/permissions.js';
 import { Store } from '../src/store/store.js';
+import { configureLogger } from '../src/logger.js';
+
+configureLogger({ level: 'error', console: false, prompts: false });
 
 test('prompt jobs persist and keep FIFO order', () => {
   const dbPath = tempDbPath();
@@ -97,6 +100,33 @@ test('ControlHub persists queued prompts while a session is busy', async () => {
     assert.equal(store.stats().queuedPrompts, 1);
   } finally {
     await hub.shutdown();
+    store.close();
+    cleanupDb(dbPath);
+  }
+});
+
+test('PermissionService expires pending approvals and resolves waiters', async () => {
+  const dbPath = tempDbPath();
+  const store = new Store(dbPath);
+  const config = createConfig(dbPath);
+  const events = new EventBus(store);
+  const permissions = new PermissionService(store, events, config);
+
+  try {
+    const session = createSession(store);
+    const resultPromise = permissions.requestApproval(session.id, 'CodexBash', { command: 'rm file' });
+    const pending = store.listPendingApprovals(session.id);
+
+    assert.equal(pending.length, 1);
+    assert.equal(permissions.expireSessionApprovals(session.id, 'restart'), 1);
+    assert.deepEqual(await resultPromise, { decision: 'denied', reason: 'restart' });
+
+    const approval = store.getApproval(pending[0]!.id);
+    assert.equal(approval?.status, 'expired');
+    assert.equal(approval?.decision, 'expired');
+    assert.equal(store.listPendingApprovals(session.id).length, 0);
+  } finally {
+    permissions.shutdown();
     store.close();
     cleanupDb(dbPath);
   }

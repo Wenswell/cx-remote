@@ -130,17 +130,53 @@ export class PermissionService {
     return next;
   }
 
+  expireSessionApprovals(sessionId: string, reason: string): number {
+    const approvals = this.store.listPendingApprovals(sessionId);
+    for (const approval of approvals) {
+      this.expireApproval(approval, reason);
+    }
+    return approvals.length;
+  }
+
   countPending(sessionId?: string): number {
     return this.store.listPendingApprovals(sessionId).length;
   }
 
   shutdown(): void {
-    for (const [id, pending] of this.pending.entries()) {
-      clearTimeout(pending.timer);
-      if (pending.type === 'choice') pending.resolve({ decision: 'cancel' });
-      if (pending.type === 'approval') pending.resolve({ decision: 'denied', reason: 'shutdown' });
-      this.pending.delete(id);
+    for (const approval of this.store.listPendingApprovals()) {
+      this.expireApproval(approval, 'shutdown');
     }
+  }
+
+  private expireApproval(approval: Approval, reason: string): Approval {
+    const pending = this.pending.get(approval.id);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pending.delete(approval.id);
+    }
+
+    const response: ApprovalResult | ChoiceResult = approval.type === 'choice'
+      ? { decision: 'cancel' }
+      : { decision: 'denied', reason };
+
+    const next = this.store.updateApproval({
+      ...approval,
+      status: 'expired',
+      decision: 'expired',
+      response,
+      resolvedAt: Date.now(),
+      source: null,
+    });
+
+    if (pending?.type === 'choice') {
+      pending.resolve(response as ChoiceResult);
+    } else if (pending?.type === 'approval') {
+      pending.resolve(response as ApprovalResult);
+    }
+
+    this.events.publish({ type: 'approval.resolved', sessionId: approval.sessionId, payload: { approval: next } });
+    logger.info('approval expired', { sessionKey: approval.sessionId, approvalId: approval.id, reason });
+    return next;
   }
 
   private autoApprove(toolName: string, input: unknown): ApprovalResult | null {

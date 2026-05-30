@@ -257,12 +257,24 @@ export class HubServer {
       const token = c.req.query('token');
       if (token !== this.config.server.accessToken) return c.text('Unauthorized', 401);
       const sessionId = c.req.query('sessionId') || undefined;
+      const afterId = parseEventId(c.req.query('afterId') || c.req.header('last-event-id'));
       const stream = new ReadableStream({
         start: (controller) => {
           const encoder = new TextEncoder();
           const send = (data: unknown) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+            const id = typeof data === 'object' && data !== null && 'id' in data
+              ? Number((data as { id?: unknown }).id)
+              : undefined;
+            const frame = [
+              ...(id !== undefined && Number.isFinite(id) && id > 0 ? [`id: ${id}`] : []),
+              `data: ${JSON.stringify(data)}`,
+              '',
+            ].join('\n');
+            controller.enqueue(encoder.encode(`${frame}\n`));
           };
+          for (const event of this.hub.listEvents(afterId, sessionId)) {
+            send(event);
+          }
           send({ type: 'ready', createdAt: Date.now() });
           const unsubscribe = this.hub.events.subscribe((event) => {
             if (sessionId && event.sessionId !== sessionId) return;
@@ -301,6 +313,13 @@ function parseLimit(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) throw new Error('limit must be a number');
   return parsed;
+}
+
+function parseEventId(value: string | undefined): number {
+  if (!value) return 0;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(Math.trunc(parsed), 0);
 }
 
 function errorStatus(error: unknown): 400 | 404 | 409 | 500 {

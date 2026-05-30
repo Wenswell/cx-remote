@@ -118,6 +118,11 @@ export class ControlHub {
     return this.store.listApprovals(query);
   }
 
+  listEvents(afterId = 0, sessionId?: string) {
+    if (sessionId) this.getSession(sessionId);
+    return this.store.listEvents(afterId, sessionId);
+  }
+
   renameSession(sessionId: string, title: string): Session {
     const trimmed = title.trim();
     if (!trimmed) throw new Error('Session title is required');
@@ -239,6 +244,7 @@ export class ControlHub {
     const entry = this.runtimes.get(sessionId);
     await entry?.runtime.interrupt();
     this.store.cancelPromptJobs(sessionId, ['queued', 'running'], 'interrupted');
+    this.permissions.expireSessionApprovals(sessionId, 'interrupted');
     this.publishQueueStatus(sessionId);
     this.patchSession(sessionId, { status: 'idle', currentTurnId: null });
   }
@@ -492,6 +498,7 @@ export class ControlHub {
 
     for (const session of this.store.listSessions()) {
       if (session.status === 'running' || session.status === 'waiting_approval') {
+        this.permissions.expireSessionApprovals(session.id, INTERRUPTED_RESTART_ERROR);
         this.store.updateSession({
           ...session,
           status: 'error',

@@ -80,6 +80,8 @@ Auto approval is intentionally narrow:
 - explicit command patterns from `approvals.autoApproveCommands`
 - read-only shell commands when `approvals.autoApproveReadonly` is enabled
 
+Pending approvals are expired when their Codex turn can no longer continue, including Hub restart recovery, explicit interrupt, and shutdown. Resolving an already resolved or expired approval returns the stored result.
+
 ## HTTP API
 
 The Hub API uses bearer auth and JSON errors:
@@ -114,6 +116,8 @@ GET    /api/settings
 PATCH  /api/settings
 GET    /api/events
 ```
+
+`GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. The server replays stored events after the cursor, then keeps the SSE connection open for live events.
 
 ## Control Ownership
 

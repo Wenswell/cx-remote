@@ -65,6 +65,7 @@ The Web console can:
 - view session messages, runtime status, Codex config, thread id, and turn id
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
+- reconnect the event stream with stored event replay
 - claim or release exclusive session control
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename and delete sessions
@@ -130,6 +131,7 @@ Telegram commands:
 ```
 
 Normal text is sent to the bound session. Approval requests are sent with buttons.
+Pending approvals expire automatically when the related Codex turn cannot continue after interrupt, shutdown, or Hub restart.
 
 ## Configuration
 
