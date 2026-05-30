@@ -14,6 +14,8 @@ const commands = [
   { command: 'sessions', description: 'List sessions' },
   { command: 'use', description: 'Bind chat to a session' },
   { command: 'bind', description: 'Alias for /use' },
+  { command: 'claim', description: 'Claim current session control' },
+  { command: 'release', description: 'Release current session control' },
   { command: 'current', description: 'Show current bound session' },
   { command: 'approvals', description: 'List pending approvals' },
   { command: 'stop', description: 'Interrupt current session' },
@@ -89,6 +91,7 @@ export class TelegramControl {
 
   private async handleText(target: TelegramTarget, text: string, userId: string): Promise<void> {
     const key = bindingKey(target);
+    const owner = telegramOwner(key, userId);
     if (text === '/start' || text === '/help') {
       await this.send(target, helpText(this.publicUrl()));
       return;
@@ -115,6 +118,20 @@ export class TelegramControl {
     if (text === '/current') {
       const session = this.boundSession(key);
       await this.send(target, formatSession(session));
+      return;
+    }
+
+    if (text === '/claim') {
+      const session = this.boundSession(key);
+      this.hub.claimControl(session.id, { controlType: 'telegram', ownerId: owner.id, label: owner.label });
+      await this.send(target, `Control claimed:\n${session.title}`);
+      return;
+    }
+
+    if (text === '/release') {
+      const session = this.boundSession(key);
+      this.hub.releaseControl(session.id, owner.id);
+      await this.send(target, `Control released:\n${session.title}`);
       return;
     }
 
@@ -147,7 +164,7 @@ export class TelegramControl {
     }
 
     const session = this.boundSession(key);
-    await this.hub.sendMessage(session.id, text, 'telegram');
+    await this.hub.sendMessage(session.id, text, 'telegram', { ownerId: owner.id, label: owner.label });
     await this.send(target, `Sent to ${session.title}.`);
     logger.info('telegram prompt sent', { sessionKey: session.id, userId });
   }
@@ -259,6 +276,13 @@ function stripBotMention(text: string, username: string | undefined): string {
   return username ? text.replace(new RegExp(`@${username}\\b`, 'gi'), '').trim() : text;
 }
 
+function telegramOwner(key: string, userId: string): { id: string; label: string } {
+  return {
+    id: `telegram:${key}:${userId}`,
+    label: `Telegram ${userId}`,
+  };
+}
+
 function helpText(webUrl: string): string {
   return [
     'CX TG commands',
@@ -266,6 +290,8 @@ function helpText(webUrl: string): string {
     '/sessions - list sessions',
     '/use <session-id> - bind this chat/topic',
     '/bind <session-id> - bind this chat/topic',
+    '/claim - claim control',
+    '/release - release control',
     '/current - show current session',
     '/approvals - list pending approvals',
     '/status - show status',
@@ -284,6 +310,8 @@ function formatSession(session: Session): string {
     session.status,
     `Thread: ${session.codexThreadId ?? '-'}`,
     `Turn: ${session.currentTurnId ?? '-'}`,
+    `Control: ${session.controlLabel ?? 'shared'}`,
+    `Lease: ${session.controlLeaseExpiresAt ? new Date(session.controlLeaseExpiresAt).toISOString() : '-'}`,
     `Error: ${session.lastError ?? '-'}`,
   ].join('\n');
 }

@@ -16,6 +16,20 @@ type RuntimeEntry = {
   output: string;
 };
 
+type ControlLeaseInput = {
+  controlType: ControlType;
+  ownerId: string;
+  label?: string;
+  ttlMs?: number;
+};
+
+type ControlSourceInput = {
+  ownerId?: string;
+  label?: string;
+};
+
+const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
+
 export class ControlHub {
   private readonly runtimes = new Map<string, RuntimeEntry>();
 
@@ -52,6 +66,11 @@ export class ControlHub {
       status: 'idle',
       codexThreadId: null,
       currentTurnId: null,
+      controlOwner: null,
+      controlOwnerId: null,
+      controlLabel: null,
+      controlLeaseExpiresAt: null,
+      controlUpdatedAt: null,
       config: {
         model: emptyToUndefined(this.config.agents.codex.model),
         reasoningEffort: emptyToUndefined(this.config.agents.codex.reasoningEffort),
@@ -115,6 +134,29 @@ export class ControlHub {
     this.events.publish({ type: 'session.deleted', sessionId, payload: { session } });
   }
 
+  claimControl(sessionId: string, input: ControlLeaseInput): Session {
+    this.getSession(sessionId);
+    const now = Date.now();
+    const session = this.store.updateSessionControl(sessionId, {
+      controlOwner: input.controlType,
+      controlOwnerId: input.ownerId,
+      controlLabel: input.label?.trim() || input.ownerId,
+      controlLeaseExpiresAt: now + (input.ttlMs ?? DEFAULT_CONTROL_TTL_MS),
+      controlUpdatedAt: now,
+    });
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    this.events.publish({ type: 'session.control.updated', sessionId, payload: { session } });
+    return session;
+  }
+
+  releaseControl(sessionId: string, ownerId?: string): Session {
+    const session = this.getSession(sessionId);
+    if (ownerId && session.controlOwnerId && session.controlOwnerId !== ownerId) {
+      throw new Error(`Session is controlled by ${session.controlLabel ?? session.controlOwnerId}`);
+    }
+    return this.clearControl(sessionId);
+  }
+
   bindControl(controlType: ControlType, externalId: string, sessionId: string): ControlBinding {
     this.getSession(sessionId);
     const now = Date.now();
@@ -138,10 +180,11 @@ export class ControlHub {
     return this.store.listBindings(controlType);
   }
 
-  async sendMessage(sessionId: string, text: string, source: ControlType): Promise<Message> {
+  async sendMessage(sessionId: string, text: string, source: ControlType, control: ControlSourceInput = {}): Promise<Message> {
     const trimmed = text.trim();
     if (!trimmed) throw new Error('Message text is required');
     const session = this.getSession(sessionId);
+    this.assertControl(session, source, control.ownerId);
     if (session.status === 'running') throw new Error('Session is already running');
 
     const userMessage = this.addMessage({
@@ -149,7 +192,7 @@ export class ControlHub {
       role: 'user',
       kind: 'text',
       content: trimmed,
-      metadata: { source },
+      metadata: { source, ownerId: control.ownerId, controlLabel: control.label },
     });
 
     const entry = await this.ensureRuntime(session.id);
@@ -322,6 +365,29 @@ export class ControlHub {
       updatedAt: Date.now(),
     });
     this.events.publish({ type: 'session.updated', sessionId, payload: { session } });
+    return session;
+  }
+
+  private assertControl(session: Session, source: ControlType, ownerId: string | undefined): void {
+    if (!session.controlOwner || !session.controlOwnerId) return;
+    if (session.controlLeaseExpiresAt && session.controlLeaseExpiresAt <= Date.now()) {
+      this.clearControl(session.id);
+      return;
+    }
+    if (session.controlOwner === source && session.controlOwnerId === ownerId) return;
+    throw new Error(`Session is controlled by ${session.controlLabel ?? session.controlOwner}`);
+  }
+
+  private clearControl(sessionId: string): Session {
+    const session = this.store.updateSessionControl(sessionId, {
+      controlOwner: null,
+      controlOwnerId: null,
+      controlLabel: null,
+      controlLeaseExpiresAt: null,
+      controlUpdatedAt: Date.now(),
+    });
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    this.events.publish({ type: 'session.control.updated', sessionId, payload: { session } });
     return session;
   }
 }

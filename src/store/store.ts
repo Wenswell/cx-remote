@@ -15,6 +15,14 @@ export type MessageQuery = {
   afterId?: string;
 };
 
+export type SessionControlInput = {
+  controlOwner: Session['controlOwner'];
+  controlOwnerId: string | null;
+  controlLabel: string | null;
+  controlLeaseExpiresAt: number | null;
+  controlUpdatedAt: number | null;
+};
+
 type SessionRow = Omit<Session, 'config'> & { config_json: string };
 type MessageRow = Omit<Message, 'metadata'> & { metadata_json: string };
 type ApprovalRow = Omit<Approval, 'input' | 'response'> & { input_json: string; response_json: string | null };
@@ -39,8 +47,9 @@ export class Store {
     this.db.prepare(`
       INSERT INTO sessions (
         id, title, cwd, agent, status, codexThreadId, currentTurnId,
+        controlOwner, controlOwnerId, controlLabel, controlLeaseExpiresAt, controlUpdatedAt,
         config_json, createdAt, updatedAt, lastError
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id,
       session.title,
@@ -49,6 +58,11 @@ export class Store {
       session.status,
       session.codexThreadId,
       session.currentTurnId,
+      session.controlOwner,
+      session.controlOwnerId,
+      session.controlLabel,
+      session.controlLeaseExpiresAt,
+      session.controlUpdatedAt,
       JSON.stringify(session.config),
       session.createdAt,
       session.updatedAt,
@@ -66,6 +80,11 @@ export class Store {
         status = ?,
         codexThreadId = ?,
         currentTurnId = ?,
+        controlOwner = ?,
+        controlOwnerId = ?,
+        controlLabel = ?,
+        controlLeaseExpiresAt = ?,
+        controlUpdatedAt = ?,
         config_json = ?,
         updatedAt = ?,
         lastError = ?
@@ -77,6 +96,11 @@ export class Store {
       session.status,
       session.codexThreadId,
       session.currentTurnId,
+      session.controlOwner,
+      session.controlOwnerId,
+      session.controlLabel,
+      session.controlLeaseExpiresAt,
+      session.controlUpdatedAt,
       JSON.stringify(session.config),
       session.updatedAt,
       session.lastError,
@@ -228,6 +252,17 @@ export class Store {
     return result.changes > 0;
   }
 
+  updateSessionControl(id: string, input: SessionControlInput): Session | null {
+    const current = this.getSession(id);
+    if (!current) return null;
+    const next = {
+      ...current,
+      ...input,
+      updatedAt: Date.now(),
+    };
+    return this.updateSession(next);
+  }
+
   upsertBinding(binding: ControlBinding): ControlBinding {
     this.db.prepare(`
       INSERT INTO bindings (id, controlType, externalId, sessionId, createdAt, updatedAt)
@@ -290,6 +325,11 @@ export class Store {
         status TEXT NOT NULL,
         codexThreadId TEXT,
         currentTurnId TEXT,
+        controlOwner TEXT,
+        controlOwnerId TEXT,
+        controlLabel TEXT,
+        controlLeaseExpiresAt INTEGER,
+        controlUpdatedAt INTEGER,
         config_json TEXT NOT NULL,
         createdAt INTEGER NOT NULL,
         updatedAt INTEGER NOT NULL,
@@ -347,6 +387,21 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_events_session_id
         ON events(sessionId, id);
     `);
+    this.ensureSessionControlColumns();
+  }
+
+  private ensureSessionControlColumns(): void {
+    const columns = new Set((this.db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>).map((column) => column.name));
+    const additions = [
+      ['controlOwner', 'TEXT'],
+      ['controlOwnerId', 'TEXT'],
+      ['controlLabel', 'TEXT'],
+      ['controlLeaseExpiresAt', 'INTEGER'],
+      ['controlUpdatedAt', 'INTEGER'],
+    ] as const;
+    for (const [name, type] of additions) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE sessions ADD COLUMN ${name} ${type}`);
+    }
   }
 }
 
@@ -364,6 +419,11 @@ function normalizeLimit(value: number | undefined, fallback: number): number {
 function decodeSession(row: SessionRow): Session {
   return {
     ...row,
+    controlOwner: row.controlOwner ?? null,
+    controlOwnerId: row.controlOwnerId ?? null,
+    controlLabel: row.controlLabel ?? null,
+    controlLeaseExpiresAt: row.controlLeaseExpiresAt ?? null,
+    controlUpdatedAt: row.controlUpdatedAt ?? null,
     config: JSON.parse(row.config_json) as Session['config'],
   };
 }

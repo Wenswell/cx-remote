@@ -29,6 +29,11 @@ export interface Session {
   status: SessionStatus;
   codexThreadId: string | null;
   currentTurnId: string | null;
+  controlOwner: ControlType | null;
+  controlOwnerId: string | null;
+  controlLabel: string | null;
+  controlLeaseExpiresAt: number | null;
+  controlUpdatedAt: number | null;
   config: CodexSessionConfig;
   createdAt: number;
   updatedAt: number;
@@ -74,6 +79,7 @@ export interface HubEvent {
     | 'session.created'
     | 'session.updated'
     | 'session.deleted'
+    | 'session.control.updated'
     | 'message.created'
     | 'message.delta'
     | 'approval.created'

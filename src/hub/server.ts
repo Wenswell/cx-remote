@@ -18,6 +18,8 @@ const createSessionSchema = z.object({
 
 const sendMessageSchema = z.object({
   text: z.string().min(1),
+  ownerId: z.string().optional(),
+  controlLabel: z.string().optional(),
 });
 
 const updateSessionSchema = z.object({
@@ -29,6 +31,14 @@ const resolveApprovalSchema = z.object({
 });
 
 const approvalStatusSchema = z.enum(['pending', 'resolved', 'expired']);
+const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
+
+const claimControlSchema = z.object({
+  controlType: controlTypeSchema,
+  ownerId: z.string().min(1),
+  controlLabel: z.string().optional(),
+  ttlMs: z.number().int().min(10_000).max(24 * 60 * 60 * 1000).optional(),
+});
 
 const updateSettingSchema = z.object({
   key: z.string().min(1),
@@ -190,6 +200,20 @@ export class HubServer {
       return c.json({ ok: true });
     });
 
+    app.patch('/api/sessions/:id/control', async (c) => {
+      const input = claimControlSchema.parse(await c.req.json());
+      return c.json(this.hub.claimControl(c.req.param('id'), {
+        controlType: input.controlType,
+        ownerId: input.ownerId,
+        label: input.controlLabel,
+        ttlMs: input.ttlMs,
+      }));
+    });
+
+    app.delete('/api/sessions/:id/control', (c) => {
+      return c.json(this.hub.releaseControl(c.req.param('id'), c.req.query('ownerId') || undefined));
+    });
+
     app.get('/api/sessions/:id/messages', (c) => c.json(this.hub.listMessages(c.req.param('id'), {
       limit: parseLimit(c.req.query('limit'), 200),
       afterId: c.req.query('afterId') || undefined,
@@ -197,7 +221,10 @@ export class HubServer {
 
     app.post('/api/sessions/:id/messages', async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
-      const message = await this.hub.sendMessage(c.req.param('id'), input.text, 'web');
+      const message = await this.hub.sendMessage(c.req.param('id'), input.text, 'web', {
+        ownerId: input.ownerId,
+        label: input.controlLabel,
+      });
       return c.json(message, 202);
     });
 

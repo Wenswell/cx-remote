@@ -65,6 +65,7 @@ The Web console can:
 - view session messages, runtime status, Codex config, thread id, and turn id
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
+- claim or release session control
 - rename and delete sessions
 - interrupt a running turn
 
@@ -81,6 +82,7 @@ cx-tg session <session-id>
 cx-tg messages <session-id>
 cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
 cx-tg send <session-id> "check git status"
+cx-tg attach <session-id>
 cx-tg stop <session-id>
 cx-tg rename <session-id> "new title"
 cx-tg delete <session-id>
@@ -116,6 +118,8 @@ Telegram commands:
 /sessions
 /use <session-id>
 /bind <session-id>
+/claim
+/release
 /current
 /approvals
 /status

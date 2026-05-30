@@ -1,5 +1,7 @@
 import { request } from 'node:http';
 import { readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { createInterface } from 'node:readline';
 import { loadConfig } from './config/config.js';
 import { runSetup } from './cli/setup.js';
 import { runDoctor } from './cli/doctor.js';
@@ -91,6 +93,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }), null, 2));
       return;
     }
+    case 'attach': {
+      const sessionId = argv[1];
+      if (!sessionId) throw new Error('Usage: cx-tg attach <session-id>');
+      await attachSession(client, sessionId);
+      return;
+    }
     case 'stop': {
       const sessionId = argv[1];
       if (!sessionId) throw new Error('Usage: cx-tg stop <session-id>');
@@ -171,7 +179,7 @@ class ApiClient {
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
           if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(data || `HTTP ${res.statusCode}`));
+            reject(new Error(parseErrorMessage(data) || `HTTP ${res.statusCode}`));
             return;
           }
           try {
@@ -185,6 +193,39 @@ class ApiClient {
       if (payload) req.write(payload);
       req.end();
     });
+  }
+
+  streamEvents(sessionId: string, onEvent: (event: Record<string, unknown>) => void, onError: (error: Error) => void): () => void {
+    const path = `/api/events?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(this.token)}`;
+    let buffer = '';
+    const req = request({
+      host: this.host,
+      port: this.port,
+      path,
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+      },
+    }, (res) => {
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        onError(new Error(`SSE HTTP ${res.statusCode}`));
+        return;
+      }
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buffer += chunk;
+        let index = buffer.indexOf('\n\n');
+        while (index >= 0) {
+          const frame = buffer.slice(0, index);
+          buffer = buffer.slice(index + 2);
+          handleSseFrame(frame, onEvent, onError);
+          index = buffer.indexOf('\n\n');
+        }
+      });
+    });
+    req.on('error', onError);
+    req.end();
+    return () => req.destroy();
   }
 }
 
@@ -206,8 +247,134 @@ function queryString(params: Record<string, string | undefined>): string {
   return text ? `?${text}` : '';
 }
 
+function parseErrorMessage(text: string): string {
+  if (!text) return '';
+  try {
+    const payload = JSON.parse(text) as { error?: { message?: string } };
+    return payload.error?.message || text;
+  } catch {
+    return text;
+  }
+}
+
+function handleSseFrame(frame: string, onEvent: (event: Record<string, unknown>) => void, onError: (error: Error) => void): void {
+  const data = frame.split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice('data:'.length).trimStart())
+    .join('\n');
+  if (!data) return;
+  try {
+    onEvent(JSON.parse(data) as Record<string, unknown>);
+  } catch (error) {
+    onError(error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
 function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknown) => string): void {
   console.log(json ? JSON.stringify(value, null, 2) : formatter(value));
+}
+
+async function attachSession(client: ApiClient, sessionId: string): Promise<void> {
+  const ownerId = `cli:${hostname()}:${process.pid}`;
+  const controlLabel = `CLI ${hostname()}:${process.pid}`;
+  const ttlMs = 30_000;
+  const claim = () => client.patch(`/api/sessions/${encodeURIComponent(sessionId)}/control`, {
+    controlType: 'cli',
+    ownerId,
+    controlLabel,
+    ttlMs,
+  });
+
+  await claim();
+  const history = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`);
+  console.log(formatMessages(history));
+  console.log('Attached. Type .exit to release control.');
+
+  let streamed = false;
+  let closed = false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: 'cx-tg> ' });
+  const prompt = () => {
+    if (!closed) rl.prompt();
+  };
+  const stopStream = client.streamEvents(sessionId, (event) => {
+    streamed = renderAttachEvent(event, streamed, prompt);
+  }, (error) => {
+    if (closed) return;
+    console.error(error.message);
+    prompt();
+  });
+  const heartbeat = setInterval(() => {
+    void claim().catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+    });
+  }, 15_000);
+
+  try {
+    rl.prompt();
+    rl.on('line', (line) => {
+      void (async () => {
+        const text = line.trim();
+        if (!text) {
+          rl.prompt();
+          return;
+        }
+        if (text === '.exit' || text === '/exit' || text === '/quit') {
+          rl.close();
+          return;
+        }
+        await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, ownerId, controlLabel });
+        prompt();
+      })().catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        prompt();
+      });
+    });
+    await new Promise<void>((resolve) => {
+      rl.once('close', () => {
+        closed = true;
+        resolve();
+      });
+    });
+  } finally {
+    closed = true;
+    clearInterval(heartbeat);
+    stopStream();
+    await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}/control?ownerId=${encodeURIComponent(ownerId)}`).catch(() => {});
+  }
+}
+
+function renderAttachEvent(event: Record<string, unknown>, streamed: boolean, prompt: () => void): boolean {
+  if (event.type === 'message.delta') {
+    const payload = event.payload as { delta?: unknown } | undefined;
+    process.stdout.write(String(payload?.delta ?? ''));
+    return true;
+  }
+  if (event.type === 'message.created') {
+    const payload = event.payload as { message?: { role: string; kind: string; content: string; createdAt: number } } | undefined;
+    const message = payload?.message;
+    if (!message || message.role === 'user') return streamed;
+    if (message.role === 'assistant' && streamed) {
+      process.stdout.write('\n');
+      prompt();
+      return false;
+    }
+    console.log('\n' + formatMessages([message]));
+    prompt();
+    return false;
+  }
+  if (event.type === 'approval.created') {
+    const payload = event.payload as { approval?: { id: string; toolName: string } } | undefined;
+    if (payload?.approval) {
+      console.log(`\nApproval requested: ${payload.approval.toolName} ${payload.approval.id}`);
+      prompt();
+    }
+  }
+  if (event.type === 'session.control.updated') {
+    const payload = event.payload as { session?: { controlLabel?: string | null } } | undefined;
+    console.log(`\nControl: ${payload?.session?.controlLabel ?? 'shared'}`);
+    prompt();
+  }
+  return streamed;
 }
 
 function formatStatus(value: unknown): string {
@@ -237,7 +404,17 @@ function formatSessions(value: unknown): string {
 
 function formatSessionDetail(value: unknown): string {
   const detail = value as {
-    session: { id: string; title: string; cwd: string; status: string; codexThreadId: string | null; currentTurnId: string | null; lastError: string | null };
+    session: {
+      id: string;
+      title: string;
+      cwd: string;
+      status: string;
+      codexThreadId: string | null;
+      currentTurnId: string | null;
+      controlLabel: string | null;
+      controlLeaseExpiresAt: number | null;
+      lastError: string | null;
+    };
     messages?: unknown[];
     approvals?: unknown[];
   };
@@ -246,6 +423,8 @@ function formatSessionDetail(value: unknown): string {
     `cwd: ${detail.session.cwd}`,
     `thread: ${detail.session.codexThreadId ?? '-'}`,
     `turn: ${detail.session.currentTurnId ?? '-'}`,
+    `control: ${detail.session.controlLabel ?? 'shared'}`,
+    `lease: ${detail.session.controlLeaseExpiresAt ? new Date(detail.session.controlLeaseExpiresAt).toISOString() : '-'}`,
     `lastError: ${detail.session.lastError ?? '-'}`,
     `messages: ${detail.messages?.length ?? 0}`,
     `pendingApprovals: ${detail.approvals?.length ?? 0}`,
@@ -290,6 +469,7 @@ function printHelp(): void {
     '  cx-tg messages <session-id>       Show session messages',
     '  cx-tg new --cwd <path>            Create session',
     '  cx-tg send <session-id> <text>    Send message',
+    '  cx-tg attach <session-id>         Attach CLI to a session',
     '  cx-tg stop <session-id>           Interrupt session',
     '  cx-tg rename <session-id> <title> Rename session',
     '  cx-tg delete <session-id>         Delete session',

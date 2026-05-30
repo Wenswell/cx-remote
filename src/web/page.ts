@@ -237,6 +237,8 @@ export function webPage(): string {
           <div class="details" id="session-detail"></div>
         </div>
         <div class="row">
+          <button id="claim" type="button">Claim</button>
+          <button id="release" type="button">Release</button>
           <button id="rename" type="button">Rename</button>
           <button id="stop" class="danger" type="button">Stop</button>
           <button id="delete" class="danger" type="button">Delete</button>
@@ -259,6 +261,12 @@ export function webPage(): string {
   <script>
     const token = new URLSearchParams(location.search).get('token') || localStorage.getItem('cx_tg_token') || prompt('Access token');
     if (token) localStorage.setItem('cx_tg_token', token);
+    let clientId = localStorage.getItem('cx_tg_client_id') || '';
+    if (!clientId) {
+      clientId = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : String(Date.now()) + '-' + String(Math.random()).slice(2);
+      localStorage.setItem('cx_tg_client_id', clientId);
+    }
+    const controlLabel = 'Web ' + clientId.slice(0, 8);
     const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
     let activeSessionId = localStorage.getItem('cx_tg_session') || '';
     let sessions = [];
@@ -411,6 +419,8 @@ export function webPage(): string {
           'model ' + (config.model || '-'),
           'sandbox ' + (config.sandbox || '-'),
           'approval ' + (config.approvalPolicy || '-'),
+          'control ' + (currentSession.controlLabel || 'shared'),
+          'lease ' + (currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleString() : '-'),
           'thread ' + (currentSession.codexThreadId || '-'),
           'turn ' + (currentSession.currentTurnId || '-'),
           'error ' + (currentSession.lastError || '-')
@@ -524,7 +534,7 @@ export function webPage(): string {
           loadAll().catch(console.error);
           return;
         }
-        if (['message.created', 'approval.created', 'approval.resolved', 'session.updated'].includes(data.type)) {
+        if (['message.created', 'approval.created', 'approval.resolved', 'session.updated', 'session.control.updated'].includes(data.type)) {
           loadSession().catch(console.error);
         }
       };
@@ -538,6 +548,19 @@ export function webPage(): string {
     };
     $('root-dir').onclick = () => loadDirs('').catch(alert);
     $('refresh').onclick = () => loadAll().catch(alert);
+    $('claim').onclick = async () => {
+      if (!currentSession) return;
+      await api('/api/sessions/' + encodeURIComponent(currentSession.id) + '/control', {
+        method: 'PATCH',
+        body: JSON.stringify({ controlType: 'web', ownerId: clientId, controlLabel, ttlMs: 600000 })
+      });
+      await loadSession();
+    };
+    $('release').onclick = async () => {
+      if (!currentSession) return;
+      await api('/api/sessions/' + encodeURIComponent(currentSession.id) + '/control?ownerId=' + encodeURIComponent(clientId), { method: 'DELETE' });
+      await loadSession();
+    };
     $('stop').onclick = () => activeSessionId && api('/api/sessions/' + encodeURIComponent(activeSessionId) + '/interrupt', { method: 'POST' }).then(loadAll).catch(alert);
     $('rename').onclick = async () => {
       if (!currentSession) return;
@@ -576,7 +599,7 @@ export function webPage(): string {
       $('send-state').textContent = 'Sending';
       await api('/api/sessions/' + encodeURIComponent(activeSessionId) + '/messages', {
         method: 'POST',
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ text, ownerId: clientId, controlLabel })
       });
       event.currentTarget.reset();
       $('send-state').textContent = '';

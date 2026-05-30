@@ -37,7 +37,7 @@ src/cli.ts        terminal CLI client
 
 | Entity | Purpose |
 |---|---|
-| `Session` | Codex working directory, status, thread id, model/sandbox config |
+| `Session` | Codex working directory, status, thread id, model/sandbox config, active control owner |
 | `Message` | user/assistant/tool/system messages for a session |
 | `Approval` | pending and resolved Codex approvals or choice requests |
 | `ControlBinding` | maps a Web/Telegram/CLI control context to a session |
@@ -102,6 +102,8 @@ POST   /api/sessions
 GET    /api/sessions/:id
 PATCH  /api/sessions/:id
 DELETE /api/sessions/:id
+PATCH  /api/sessions/:id/control
+DELETE /api/sessions/:id/control
 GET    /api/sessions/:id/messages
 POST   /api/sessions/:id/messages
 POST   /api/sessions/:id/interrupt
@@ -111,6 +113,20 @@ GET    /api/settings
 PATCH  /api/settings
 GET    /api/events
 ```
+
+## Control Ownership
+
+Control ownership is stored on `Session`:
+
+```text
+controlOwner
+controlOwnerId
+controlLabel
+controlLeaseExpiresAt
+controlUpdatedAt
+```
+
+Web, Telegram, and CLI can claim a lease before sending. `ControlHub.sendMessage()` checks the lease in one place, so all controls follow the same rule. CLI `attach` claims a short lease and refreshes it while the process is alive, then releases it on exit.
 
 ## First Version Boundaries
 
