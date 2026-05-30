@@ -1,0 +1,32 @@
+{
+  "name": "cx-tg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "cx-tg": "./dist/main.js",
+    "cc-hub": "./dist/main.js"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts hub",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js hub",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
+    "@hono/node-server": "^2.0.4",
+    "grammy": "^1.42.0",
+    "hono": "^4.12.23",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=25.0.0"
+  },
+  "packageManager": "pnpm@9.6.0"
+}

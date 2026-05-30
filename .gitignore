@@ -1,0 +1,11 @@
+
+node_modules/
+dist/
+.env
+references/
+.flai/.phase
+.flai/.current-task
+*.log
+logs/
+data/
+.DS_Store

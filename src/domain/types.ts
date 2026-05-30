@@ -1,0 +1,123 @@
+export type AgentKind = 'codex';
+
+export type SessionStatus = 'idle' | 'starting' | 'running' | 'waiting_approval' | 'error';
+
+export type ControlType = 'web' | 'telegram' | 'cli';
+
+export type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
+
+export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
+
+export type ApprovalType = 'tool' | 'choice';
+
+export type ApprovalStatus = 'pending' | 'resolved' | 'expired';
+
+export interface CodexSessionConfig {
+  model?: string;
+  reasoningEffort?: string;
+  approvalPolicy: ApprovalPolicy;
+  sandbox: SandboxMode;
+  search: boolean;
+  bypassApprovalsAndSandbox: boolean;
+}
+
+export interface Session {
+  id: string;
+  title: string;
+  cwd: string;
+  agent: AgentKind;
+  status: SessionStatus;
+  codexThreadId: string | null;
+  currentTurnId: string | null;
+  config: CodexSessionConfig;
+  createdAt: number;
+  updatedAt: number;
+  lastError: string | null;
+}
+
+export interface Message {
+  id: string;
+  sessionId: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  kind: 'text' | 'event' | 'error';
+  content: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+}
+
+export interface Approval {
+  id: string;
+  sessionId: string;
+  type: ApprovalType;
+  toolName: string;
+  input: unknown;
+  status: ApprovalStatus;
+  decision: string | null;
+  response: unknown;
+  createdAt: number;
+  resolvedAt: number | null;
+  source: ControlType | null;
+}
+
+export interface ControlBinding {
+  id: string;
+  controlType: ControlType;
+  externalId: string;
+  sessionId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface HubEvent {
+  id?: number;
+  type:
+    | 'session.created'
+    | 'session.updated'
+    | 'session.deleted'
+    | 'message.created'
+    | 'message.delta'
+    | 'approval.created'
+    | 'approval.resolved'
+    | 'runtime.event'
+    | 'runtime.error';
+  sessionId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: number;
+}
+
+export type ApprovalDecision = 'approved' | 'approved_for_session' | 'denied' | 'abort';
+
+export interface ApprovalResult {
+  decision: ApprovalDecision;
+  reason?: string;
+}
+
+export interface ChoiceAnswer {
+  decision: 'accept';
+  answers: Record<string, string[]> | Record<string, { answers: string[] }>;
+}
+
+export type ChoiceResult = ChoiceAnswer | { decision: 'decline' | 'cancel' };
+
+export interface ChoiceOption {
+  label: string;
+  value: string;
+  questionId: string;
+}
+
+export interface CodexEvent {
+  type:
+    | 'thread_started'
+    | 'task_started'
+    | 'task_complete'
+    | 'task_failed'
+    | 'turn_aborted'
+    | 'agent_message'
+    | 'agent_message_delta'
+    | 'agent_reasoning_delta'
+    | 'exec_command_begin'
+    | 'exec_command_end'
+    | 'patch_apply_begin'
+    | 'patch_apply_end';
+  [key: string]: unknown;
+}
