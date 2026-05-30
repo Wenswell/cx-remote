@@ -1,6 +1,9 @@
 import { request } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { loadConfig } from './config/config.js';
+import { runSetup } from './cli/setup.js';
+import { runDoctor } from './cli/doctor.js';
+import { runConfigCommand } from './cli/config.js';
 
 type Method = 'GET' | 'POST';
 
@@ -20,6 +23,28 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   if (command === 'hub') {
     const { startApp } = await import('./main.js');
     await startApp();
+    return;
+  }
+
+  if (command === 'setup') {
+    await runSetup();
+    return;
+  }
+
+  if (command === 'config') {
+    runConfigCommand(argv.slice(1));
+    return;
+  }
+
+  if (command === 'doctor') {
+    let client: ApiClient | undefined;
+    try {
+      const { config } = loadConfig();
+      client = new ApiClient(config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host, config.server.port, config.server.accessToken);
+    } catch {
+      client = undefined;
+    }
+    await runDoctor(client);
     return;
   }
 
@@ -63,10 +88,6 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       const decision = argv[2] ?? 'approved';
       if (!approvalId) throw new Error('Usage: cx-tg approve <approval-id> [approved|denied|approved_for_session]');
       console.log(JSON.stringify(await client.post(`/api/approvals/${encodeURIComponent(approvalId)}/resolve`, { decision }), null, 2));
-      return;
-    }
-    case 'doctor': {
-      await doctor(client);
       return;
     }
     default:
@@ -129,22 +150,18 @@ function valueAfter(argv: string[], name: string): string | undefined {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
-async function doctor(client: ApiClient): Promise<void> {
-  try {
-    const status = await client.get('/api/status');
-    console.log('hub: ok');
-    console.log(JSON.stringify(status, null, 2));
-  } catch (error) {
-    console.log('hub: failed');
-    console.log(error instanceof Error ? error.message : String(error));
-  }
-}
-
 function printHelp(): void {
   console.log([
     'cx-tg commands',
     '',
     '  cx-tg hub                         Start Hub + Web + Telegram',
+    '  cx-tg setup                       Configure settings',
+    '  cx-tg config path                 Print settings path',
+    '  cx-tg config show [--resolved]    Print settings',
+    '  cx-tg config list                 List settings',
+    '  cx-tg config get <key>            Print one setting',
+    '  cx-tg config set <key> <value>     Update settings',
+    '  cx-tg config validate             Validate settings',
     '  cx-tg status                      Show Hub status',
     '  cx-tg sessions                    List sessions',
     '  cx-tg new --cwd <path>            Create session',

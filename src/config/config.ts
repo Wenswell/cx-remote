@@ -4,12 +4,13 @@ import { dirname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
 import type { ApprovalPolicy, SandboxMode } from '../domain/types.js';
+import { SETTING_FIELDS, findSettingField, type SettingField } from './fields.js';
 
 const approvalPolicySchema = z.enum(['untrusted', 'on-failure', 'on-request', 'never']);
 const sandboxSchema = z.enum(['read-only', 'workspace-write', 'danger-full-access']);
 const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
 
-const settingsSchema = z.object({
+export const settingsSchema = z.object({
   server: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.coerce.number().int().min(1).max(65535).default(3030),
@@ -69,6 +70,22 @@ export interface AppConfig extends Settings {
 }
 
 export type ConfigSource = 'generated' | 'file';
+export type ConfigPatch = Partial<{
+  server: Partial<Settings['server']>;
+  workspace: Partial<Settings['workspace']>;
+  agents: Partial<{
+    default: Settings['agents']['default'];
+    codex: Partial<Settings['agents']['codex']>;
+  }>;
+  controls: Partial<{
+    web: Partial<Settings['controls']['web']>;
+    cli: Partial<Settings['controls']['cli']>;
+    telegram: Partial<Settings['controls']['telegram']>;
+  }>;
+  approvals: Partial<Settings['approvals']>;
+  storage: Partial<Settings['storage']>;
+  log: Partial<Settings['log']>;
+}>;
 
 export interface LoadConfigResult {
   config: AppConfig;
@@ -83,6 +100,10 @@ export function defaultConfigHome(): string {
 
 export function defaultSettingsPath(home = defaultConfigHome()): string {
   return join(home, 'settings.json');
+}
+
+export function getSettingsPath(): string {
+  return expandHome(process.env.CX_TG_SETTINGS || defaultSettingsPath());
 }
 
 export function loadConfig(): LoadConfigResult {
@@ -101,8 +122,7 @@ export function loadConfig(): LoadConfigResult {
   }
 
   const merged = applyEnv(raw);
-  const config = settingsSchema.parse(merged) as Settings;
-  validateTelegram(config);
+  const config = validateSettings(merged);
 
   return {
     config: {
@@ -120,8 +140,95 @@ export function loadConfig(): LoadConfigResult {
   };
 }
 
+export function readSettings(): Settings {
+  const settingsPath = getSettingsPath();
+  if (!existsSync(settingsPath)) {
+    return createDefaultSettings();
+  }
+  const raw = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  return validateSettings(raw);
+}
+
+export function writeSettings(settings: Settings, settingsPath = getSettingsPath()): void {
+  const parsed = validateSettings(settings);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, `${JSON.stringify(parsed, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function patchSettings(patch: ConfigPatch): Settings {
+  const current = readSettings();
+  const next: Settings = {
+    ...current,
+    ...patch,
+    server: { ...current.server, ...patch.server },
+    workspace: { ...current.workspace, ...patch.workspace },
+    agents: {
+      ...current.agents,
+      ...patch.agents,
+      codex: { ...current.agents.codex, ...patch.agents?.codex },
+    },
+    controls: {
+      ...current.controls,
+      ...patch.controls,
+      web: { ...current.controls.web, ...patch.controls?.web },
+      cli: { ...current.controls.cli, ...patch.controls?.cli },
+      telegram: { ...current.controls.telegram, ...patch.controls?.telegram },
+    },
+    approvals: { ...current.approvals, ...patch.approvals },
+    storage: { ...current.storage, ...patch.storage },
+    log: { ...current.log, ...patch.log },
+  };
+  const parsed = validateSettings(next);
+  writeSettings(parsed);
+  return parsed;
+}
+
+export function validateSettings(input: unknown): Settings {
+  const settings = settingsSchema.parse(input) as Settings;
+  validateTelegram(settings);
+  return settings;
+}
+
+export function listSettingFields(): SettingField[] {
+  return [...SETTING_FIELDS];
+}
+
+export function getSettingValue(settings: Settings | AppConfig, key: string): unknown {
+  const field = findSettingField(key);
+  return getPath(settings as unknown as Record<string, unknown>, field.path);
+}
+
+export function setSettingValue(key: string, value: unknown): Settings {
+  const field = findSettingField(key);
+  if (field.readOnly) throw new Error(`Config key is read-only: ${key}`);
+  const current = readSettings();
+  const next = structuredClone(current) as unknown as Record<string, unknown>;
+  setPath(next, field.path, parseSettingInput(field, value));
+  const parsed = validateSettings(next);
+  writeSettings(parsed);
+  return parsed;
+}
+
+export function maskSettings<T>(settings: T): T {
+  const next = structuredClone(settings) as unknown as Record<string, unknown>;
+  for (const field of SETTING_FIELDS) {
+    if (!field.secret) continue;
+    const value = getPath(next, field.path);
+    if (typeof value === 'string' && value) {
+      setPath(next, field.path, maskSecret(value));
+    }
+  }
+  return next as T;
+}
+
+export function maskSecret(value: string): string {
+  if (!value) return '';
+  if (value.length <= 8) return 'set';
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
 export function createDefaultSettings(home = defaultConfigHome()): Settings {
-  return settingsSchema.parse({
+  return validateSettings({
     server: {
       host: '0.0.0.0',
       port: 3030,
@@ -199,32 +306,36 @@ export function isPathInside(root: string, candidate: string): boolean {
 function applyEnv(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const next = structuredClone(raw) as Record<string, unknown>;
-  setPath(next, ['server', 'host'], process.env.CX_TG_HOST);
-  setPath(next, ['server', 'port'], process.env.CX_TG_PORT);
-  setPath(next, ['server', 'publicUrl'], process.env.CX_TG_PUBLIC_URL);
-  setPath(next, ['server', 'accessToken'], process.env.CX_TG_ACCESS_TOKEN);
-  setPath(next, ['storage', 'dbPath'], process.env.CX_TG_DB_PATH);
-  setPath(next, ['agents', 'codex', 'bin'], process.env.CODEX_BIN);
-  setPath(next, ['agents', 'codex', 'model'], process.env.CODEX_MODEL);
-  setPath(next, ['agents', 'codex', 'reasoningEffort'], process.env.CODEX_REASONING_EFFORT);
-  setPath(next, ['agents', 'codex', 'approvalPolicy'], process.env.CODEX_APPROVAL_POLICY as ApprovalPolicy | undefined);
-  setPath(next, ['agents', 'codex', 'sandbox'], process.env.CODEX_SANDBOX as SandboxMode | undefined);
-  setPath(next, ['agents', 'codex', 'search'], boolEnv(process.env.CODEX_SEARCH));
-  setPath(next, ['controls', 'telegram', 'enabled'], boolEnv(process.env.TG_ENABLED));
-  setPath(next, ['controls', 'telegram', 'botToken'], process.env.TG_BOT_TOKEN);
-  setPath(next, ['controls', 'telegram', 'allowedUsers'], listEnv(process.env.TG_ALLOWED_USERS));
-  setPath(next, ['controls', 'telegram', 'allowedChats'], listEnv(process.env.TG_ALLOWED_CHATS));
-  setPath(next, ['log', 'level'], process.env.LOG_LEVEL);
-  setPath(next, ['log', 'file'], process.env.LOG_FILE);
-  setPath(next, ['log', 'console'], boolEnv(process.env.LOG_CONSOLE));
-  setPath(next, ['log', 'prompts'], boolEnv(process.env.LOG_PROMPTS));
-  setPath(next, ['approvals', 'autoApproveCommands'], listEnv(process.env.AUTO_APPROVE_COMMANDS));
-  setPath(next, ['approvals', 'autoApproveReadonly'], boolEnv(process.env.AUTO_APPROVE_READONLY));
+  setEnvPath(next, ['server', 'host'], process.env.CX_TG_HOST);
+  setEnvPath(next, ['server', 'port'], process.env.CX_TG_PORT);
+  setEnvPath(next, ['server', 'publicUrl'], process.env.CX_TG_PUBLIC_URL);
+  setEnvPath(next, ['server', 'accessToken'], process.env.CX_TG_ACCESS_TOKEN);
+  setEnvPath(next, ['storage', 'dbPath'], process.env.CX_TG_DB_PATH);
+  setEnvPath(next, ['agents', 'codex', 'bin'], process.env.CODEX_BIN);
+  setEnvPath(next, ['agents', 'codex', 'model'], process.env.CODEX_MODEL);
+  setEnvPath(next, ['agents', 'codex', 'reasoningEffort'], process.env.CODEX_REASONING_EFFORT);
+  setEnvPath(next, ['agents', 'codex', 'approvalPolicy'], process.env.CODEX_APPROVAL_POLICY as ApprovalPolicy | undefined);
+  setEnvPath(next, ['agents', 'codex', 'sandbox'], process.env.CODEX_SANDBOX as SandboxMode | undefined);
+  setEnvPath(next, ['agents', 'codex', 'search'], boolEnv(process.env.CODEX_SEARCH));
+  setEnvPath(next, ['controls', 'telegram', 'enabled'], boolEnv(process.env.TG_ENABLED));
+  setEnvPath(next, ['controls', 'telegram', 'botToken'], process.env.TG_BOT_TOKEN);
+  setEnvPath(next, ['controls', 'telegram', 'allowedUsers'], listEnv(process.env.TG_ALLOWED_USERS));
+  setEnvPath(next, ['controls', 'telegram', 'allowedChats'], listEnv(process.env.TG_ALLOWED_CHATS));
+  setEnvPath(next, ['log', 'level'], process.env.LOG_LEVEL);
+  setEnvPath(next, ['log', 'file'], process.env.LOG_FILE);
+  setEnvPath(next, ['log', 'console'], boolEnv(process.env.LOG_CONSOLE));
+  setEnvPath(next, ['log', 'prompts'], boolEnv(process.env.LOG_PROMPTS));
+  setEnvPath(next, ['approvals', 'autoApproveCommands'], listEnv(process.env.AUTO_APPROVE_COMMANDS));
+  setEnvPath(next, ['approvals', 'autoApproveReadonly'], boolEnv(process.env.AUTO_APPROVE_READONLY));
   return next;
 }
 
-function setPath(target: Record<string, unknown>, path: string[], value: unknown): void {
+function setEnvPath(target: Record<string, unknown>, path: string[], value: unknown): void {
   if (value === undefined || value === '') return;
+  setPath(target, path, value);
+}
+
+function setPath(target: Record<string, unknown>, path: string[], value: unknown): void {
   let current: Record<string, unknown> = target;
   for (const part of path.slice(0, -1)) {
     const existing = current[part];
@@ -234,6 +345,57 @@ function setPath(target: Record<string, unknown>, path: string[], value: unknown
     current = current[part] as Record<string, unknown>;
   }
   current[path[path.length - 1]!] = value;
+}
+
+function getPath(target: Record<string, unknown>, path: string[]): unknown {
+  let current: unknown = target;
+  for (const part of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function parseSettingInput(field: SettingField, value: unknown): unknown {
+  if (field.type === 'string') return typeof value === 'string' ? value : String(value);
+
+  if (field.type === 'number') {
+    const parsed = typeof value === 'number' ? value : Number(String(value));
+    if (!Number.isFinite(parsed)) throw new Error(`Config key requires a number: ${field.key}`);
+    return parsed;
+  }
+
+  if (field.type === 'boolean') {
+    if (typeof value === 'boolean') return value;
+    if (typeof value !== 'string') throw new Error(`Config key requires a boolean: ${field.key}`);
+    const normalized = value.toLowerCase();
+    if (['true', 'yes', '1', 'on'].includes(normalized)) return true;
+    if (['false', 'no', '0', 'off'].includes(normalized)) return false;
+    throw new Error(`Config key requires a boolean: ${field.key}`);
+  }
+
+  if (field.type === 'string[]') {
+    if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
+    if (typeof value !== 'string') throw new Error(`Config key requires a string list: ${field.key}`);
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) return parsed;
+      throw new Error(`Config key requires a string list: ${field.key}`);
+    }
+    return trimmed.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+
+  if (field.type === 'enum') {
+    const parsed = typeof value === 'string' ? value : String(value);
+    if (!field.choices?.includes(parsed)) {
+      throw new Error(`Config key ${field.key} must be one of: ${field.choices?.join(', ')}`);
+    }
+    return parsed;
+  }
+
+  return value;
 }
 
 function boolEnv(value: string | undefined): boolean | undefined {

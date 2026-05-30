@@ -34,6 +34,12 @@ Equivalent:
 cx-tg hub
 ```
 
+Run the interactive setup when you want to configure paths, Codex defaults, Web, and Telegram before starting:
+
+```bash
+cx-tg setup
+```
+
 On first start, the app creates:
 
 ```text
@@ -62,6 +68,10 @@ The Web console can:
 ## CLI
 
 ```bash
+cx-tg setup
+cx-tg config list
+cx-tg config set workspace.roots /home/ilove/Documents/repos
+cx-tg config validate
 cx-tg status
 cx-tg sessions
 cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
@@ -110,6 +120,17 @@ Main file:
 
 ```text
 ~/.cx-tg/settings.json
+```
+
+Useful commands:
+
+```bash
+cx-tg config path
+cx-tg config show
+cx-tg config show --resolved
+cx-tg config get codex.model
+cx-tg config set codex.model gpt-5.1-codex
+cx-tg doctor
 ```
 
 Environment variables can override selected fields:

@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
 import { z } from 'zod';
-import type { AppConfig } from '../config/config.js';
+import { getSettingValue, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
+import { findSettingField } from '../config/fields.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import { webPage } from '../web/page.js';
 import { logger } from '../logger.js';
@@ -19,6 +20,11 @@ const sendMessageSchema = z.object({
 
 const resolveApprovalSchema = z.object({
   decision: z.string().min(1),
+});
+
+const updateSettingSchema = z.object({
+  key: z.string().min(1),
+  value: z.unknown(),
 });
 
 export class HubServer {
@@ -86,6 +92,25 @@ export class HubServer {
       },
       stats: this.hub.stats(),
     }));
+
+    app.get('/api/settings', (c) => c.json({
+      settings: maskSettings(this.config),
+      fields: listSettingFields().map((field) => ({
+        ...field,
+        value: field.secret ? undefined : getSettingValue(this.config, field.key),
+      })),
+    }));
+
+    app.patch('/api/settings', async (c) => {
+      const input = updateSettingSchema.parse(await c.req.json());
+      const field = findSettingField(input.key);
+      const settings = setSettingValue(input.key, input.value);
+      return c.json({
+        ok: true,
+        settings: maskSettings(settings),
+        restartRequired: Boolean(field.restartRequired),
+      });
+    });
 
     app.get('/api/sessions', (c) => c.json(this.hub.listSessions()));
     app.post('/api/sessions', async (c) => {
