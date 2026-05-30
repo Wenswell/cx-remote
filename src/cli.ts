@@ -5,7 +5,7 @@ import { runSetup } from './cli/setup.js';
 import { runDoctor } from './cli/doctor.js';
 import { runConfigCommand } from './cli/config.js';
 
-type Method = 'GET' | 'POST';
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   const command = argv[0] || 'help';
@@ -53,14 +53,28 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
 
   switch (command) {
     case 'status': {
-      console.log(JSON.stringify(await client.get('/api/status'), null, 2));
+      const status = await client.get('/api/status');
+      printMaybeJson(status, hasFlag(argv, '--json'), formatStatus);
       return;
     }
     case 'sessions': {
-      const sessions = await client.get('/api/sessions') as Array<{ id: string; title: string; cwd: string; status: string }>;
-      for (const session of sessions) {
-        console.log(`${session.id}\t${session.status}\t${session.title}\t${session.cwd}`);
-      }
+      const sessions = await client.get('/api/sessions');
+      printMaybeJson(sessions, hasFlag(argv, '--json'), formatSessions);
+      return;
+    }
+    case 'session': {
+      const sessionId = argv[1];
+      if (!sessionId) throw new Error('Usage: cx-tg session <session-id> [--json]');
+      const detail = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      printMaybeJson(detail, hasFlag(argv, '--json'), formatSessionDetail);
+      return;
+    }
+    case 'messages': {
+      const sessionId = argv[1];
+      if (!sessionId) throw new Error('Usage: cx-tg messages <session-id> [--limit <n>] [--json]');
+      const limit = valueAfter(argv, '--limit');
+      const messages = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}/messages${queryString({ limit })}`);
+      printMaybeJson(messages, hasFlag(argv, '--json'), formatMessages);
       return;
     }
     case 'new': {
@@ -81,6 +95,27 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       const sessionId = argv[1];
       if (!sessionId) throw new Error('Usage: cx-tg stop <session-id>');
       console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/interrupt`, {}), null, 2));
+      return;
+    }
+    case 'rename': {
+      const sessionId = argv[1];
+      const title = argv.slice(2).join(' ').trim();
+      if (!sessionId || !title) throw new Error('Usage: cx-tg rename <session-id> <title>');
+      console.log(JSON.stringify(await client.patch(`/api/sessions/${encodeURIComponent(sessionId)}`, { title }), null, 2));
+      return;
+    }
+    case 'delete': {
+      const sessionId = argv[1];
+      if (!sessionId) throw new Error('Usage: cx-tg delete <session-id>');
+      console.log(JSON.stringify(await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}`), null, 2));
+      return;
+    }
+    case 'approvals': {
+      const status = hasFlag(argv, '--all') ? 'all' : (valueAfter(argv, '--status') ?? 'pending');
+      const sessionId = valueAfter(argv, '--session');
+      const limit = valueAfter(argv, '--limit');
+      const approvals = await client.get(`/api/approvals${queryString({ status, sessionId, limit })}`);
+      printMaybeJson(approvals, hasFlag(argv, '--json'), formatApprovals);
       return;
     }
     case 'approve': {
@@ -108,6 +143,14 @@ class ApiClient {
 
   post(path: string, body: unknown): Promise<unknown> {
     return this.call('POST', path, body);
+  }
+
+  patch(path: string, body: unknown): Promise<unknown> {
+    return this.call('PATCH', path, body);
+  }
+
+  delete(path: string): Promise<unknown> {
+    return this.call('DELETE', path);
   }
 
   private call(method: Method, path: string, body?: unknown): Promise<unknown> {
@@ -150,6 +193,85 @@ function valueAfter(argv: string[], name: string): string | undefined {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
+function hasFlag(argv: string[], name: string): boolean {
+  return argv.includes(name);
+}
+
+function queryString(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, value);
+  }
+  const text = search.toString();
+  return text ? `?${text}` : '';
+}
+
+function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknown) => string): void {
+  console.log(json ? JSON.stringify(value, null, 2) : formatter(value));
+}
+
+function formatStatus(value: unknown): string {
+  const status = value as {
+    server?: { host?: string; port?: number; publicUrl?: string };
+    workspaceRoots?: string[];
+    controls?: { telegram?: { enabled?: boolean } };
+    stats?: { sessions?: number; messages?: number; pendingApprovals?: number; runtimes?: number };
+  };
+  return [
+    `Hub: ${status.server?.host}:${status.server?.port}`,
+    `Public URL: ${status.server?.publicUrl || '-'}`,
+    `Sessions: ${status.stats?.sessions ?? 0}`,
+    `Messages: ${status.stats?.messages ?? 0}`,
+    `Pending approvals: ${status.stats?.pendingApprovals ?? 0}`,
+    `Active runtimes: ${status.stats?.runtimes ?? 0}`,
+    `Telegram: ${status.controls?.telegram?.enabled ? 'enabled' : 'disabled'}`,
+    `Workspace roots: ${(status.workspaceRoots ?? []).join(', ')}`,
+  ].join('\n');
+}
+
+function formatSessions(value: unknown): string {
+  const sessions = value as Array<{ id: string; title: string; cwd: string; status: string }>;
+  if (sessions.length === 0) return 'No sessions.';
+  return sessions.map((session) => `${session.id}\t${session.status}\t${session.title}\t${session.cwd}`).join('\n');
+}
+
+function formatSessionDetail(value: unknown): string {
+  const detail = value as {
+    session: { id: string; title: string; cwd: string; status: string; codexThreadId: string | null; currentTurnId: string | null; lastError: string | null };
+    messages?: unknown[];
+    approvals?: unknown[];
+  };
+  return [
+    `${detail.session.id}\t${detail.session.status}\t${detail.session.title}`,
+    `cwd: ${detail.session.cwd}`,
+    `thread: ${detail.session.codexThreadId ?? '-'}`,
+    `turn: ${detail.session.currentTurnId ?? '-'}`,
+    `lastError: ${detail.session.lastError ?? '-'}`,
+    `messages: ${detail.messages?.length ?? 0}`,
+    `pendingApprovals: ${detail.approvals?.length ?? 0}`,
+  ].join('\n');
+}
+
+function formatMessages(value: unknown): string {
+  const messages = value as Array<{ role: string; kind: string; content: string; createdAt: number }>;
+  if (messages.length === 0) return 'No messages.';
+  return messages.map((message) => [
+    `[${new Date(message.createdAt).toISOString()}] ${message.role}/${message.kind}`,
+    message.content,
+  ].join('\n')).join('\n\n');
+}
+
+function formatApprovals(value: unknown): string {
+  const approvals = value as Array<{ id: string; sessionId: string; status: string; toolName: string; createdAt: number; decision: string | null }>;
+  if (approvals.length === 0) return 'No approvals.';
+  return approvals.map((approval) => [
+    `${approval.id}\t${approval.status}\t${approval.toolName}`,
+    `session: ${approval.sessionId}`,
+    `decision: ${approval.decision ?? '-'}`,
+    `created: ${new Date(approval.createdAt).toISOString()}`,
+  ].join('\n')).join('\n\n');
+}
+
 function printHelp(): void {
   console.log([
     'cx-tg commands',
@@ -163,10 +285,15 @@ function printHelp(): void {
     '  cx-tg config set <key> <value>     Update settings',
     '  cx-tg config validate             Validate settings',
     '  cx-tg status                      Show Hub status',
-    '  cx-tg sessions                    List sessions',
+    '  cx-tg sessions [--json]           List sessions',
+    '  cx-tg session <session-id>        Show session detail',
+    '  cx-tg messages <session-id>       Show session messages',
     '  cx-tg new --cwd <path>            Create session',
     '  cx-tg send <session-id> <text>    Send message',
     '  cx-tg stop <session-id>           Interrupt session',
+    '  cx-tg rename <session-id> <title> Rename session',
+    '  cx-tg delete <session-id>         Delete session',
+    '  cx-tg approvals [--all]           List approvals',
     '  cx-tg approve <approval-id>       Resolve approval',
     '  cx-tg doctor                      Check local Hub',
     '',

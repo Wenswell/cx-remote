@@ -74,9 +74,14 @@ cx-tg config set workspace.roots /home/ilove/Documents/repos
 cx-tg config validate
 cx-tg status
 cx-tg sessions
+cx-tg session <session-id>
+cx-tg messages <session-id>
 cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
 cx-tg send <session-id> "check git status"
 cx-tg stop <session-id>
+cx-tg rename <session-id> "new title"
+cx-tg delete <session-id>
+cx-tg approvals --all
 cx-tg approve <approval-id> approved
 cx-tg doctor
 ```
@@ -107,6 +112,9 @@ Telegram commands:
 /new <path>
 /sessions
 /use <session-id>
+/bind <session-id>
+/current
+/approvals
 /status
 /stop
 /help

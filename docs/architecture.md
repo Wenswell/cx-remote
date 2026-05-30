@@ -79,6 +79,37 @@ Auto approval is intentionally narrow:
 - explicit command patterns from `approvals.autoApproveCommands`
 - read-only shell commands when `approvals.autoApproveReadonly` is enabled
 
+## HTTP API
+
+The Hub API uses bearer auth and JSON errors:
+
+```json
+{
+  "error": {
+    "message": "Unauthorized"
+  }
+}
+```
+
+Main endpoints:
+
+```text
+GET    /api/status
+GET    /api/sessions
+POST   /api/sessions
+GET    /api/sessions/:id
+PATCH  /api/sessions/:id
+DELETE /api/sessions/:id
+GET    /api/sessions/:id/messages
+POST   /api/sessions/:id/messages
+POST   /api/sessions/:id/interrupt
+GET    /api/approvals
+POST   /api/approvals/:id/resolve
+GET    /api/settings
+PATCH  /api/settings
+GET    /api/events
+```
+
 ## First Version Boundaries
 
 Included:

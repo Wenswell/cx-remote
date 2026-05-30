@@ -3,8 +3,8 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { CodexEvent, ControlBinding, ControlType, Message, Session } from '../domain/types.js';
-import type { Store } from '../store/store.js';
+import type { Approval, CodexEvent, ControlBinding, ControlType, Message, Session } from '../domain/types.js';
+import type { ApprovalQuery, MessageQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
 import { CodexRuntime } from '../agents/codex/runtime.js';
@@ -85,9 +85,34 @@ export class ControlHub {
     return this.store.listSessions();
   }
 
-  listMessages(sessionId: string, limit = 200): Message[] {
+  listMessages(sessionId: string, query: number | MessageQuery = 200): Message[] {
     this.getSession(sessionId);
-    return this.store.listMessages(sessionId, limit);
+    return this.store.listMessages(sessionId, query);
+  }
+
+  listApprovals(query: ApprovalQuery = {}): Approval[] {
+    if (query.sessionId) this.getSession(query.sessionId);
+    return this.store.listApprovals(query);
+  }
+
+  renameSession(sessionId: string, title: string): Session {
+    const trimmed = title.trim();
+    if (!trimmed) throw new Error('Session title is required');
+    const session = this.store.updateSessionTitle(sessionId, trimmed);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    this.events.publish({ type: 'session.updated', sessionId, payload: { session } });
+    return session;
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    const session = this.getSession(sessionId);
+    const entry = this.runtimes.get(sessionId);
+    if (entry) {
+      await entry.runtime.stop();
+      this.runtimes.delete(sessionId);
+    }
+    this.store.deleteSession(sessionId);
+    this.events.publish({ type: 'session.deleted', sessionId, payload: { session } });
   }
 
   bindControl(controlType: ControlType, externalId: string, sessionId: string): ControlBinding {

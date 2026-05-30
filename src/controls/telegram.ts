@@ -4,7 +4,7 @@ import type { Api, RawApi } from 'grammy';
 import type { AppConfig } from '../config/config.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import type { Approval, HubEvent, Message, Session } from '../domain/types.js';
-import { escapeHtml, truncate } from '../utils.js';
+import { escapeHtml } from '../utils.js';
 import { logger } from '../logger.js';
 
 const commands = [
@@ -13,6 +13,9 @@ const commands = [
   { command: 'new', description: 'Create session: /new <path>' },
   { command: 'sessions', description: 'List sessions' },
   { command: 'use', description: 'Bind chat to a session' },
+  { command: 'bind', description: 'Alias for /use' },
+  { command: 'current', description: 'Show current bound session' },
+  { command: 'approvals', description: 'List pending approvals' },
   { command: 'stop', description: 'Interrupt current session' },
   { command: 'help', description: 'Show commands' },
 ] as const;
@@ -101,11 +104,23 @@ export class TelegramControl {
       return;
     }
 
-    if (text.startsWith('/use ')) {
-      const sessionId = text.slice('/use '.length).trim();
+    if (text.startsWith('/use ') || text.startsWith('/bind ')) {
+      const sessionId = text.replace(/^\/(use|bind)\s+/, '').trim();
       const session = this.hub.getSession(sessionId);
       this.hub.bindControl('telegram', key, session.id);
       await this.send(target, `Bound to session:\n${session.title}\n${session.id}`);
+      return;
+    }
+
+    if (text === '/current') {
+      const session = this.boundSession(key);
+      await this.send(target, formatSession(session));
+      return;
+    }
+
+    if (text === '/approvals') {
+      const session = this.boundSession(key);
+      await this.send(target, formatApprovals(this.hub.listApprovals({ sessionId: session.id, status: 'pending' })));
       return;
     }
 
@@ -191,11 +206,13 @@ export class TelegramControl {
 
   private async send(target: TelegramTarget, text: string): Promise<void> {
     const threadId = target.threadId ? Number(target.threadId) : undefined;
-    await this.api.sendMessage(target.chatId, renderTelegramHtml(truncate(text, 3900)), {
-      parse_mode: 'HTML',
-      message_thread_id: threadId && threadId !== 1 ? threadId : undefined,
-      link_preview_options: { is_disabled: true },
-    });
+    for (const chunk of splitTelegramText(text)) {
+      await this.api.sendMessage(target.chatId, renderTelegramHtml(chunk), {
+        parse_mode: 'HTML',
+        message_thread_id: threadId && threadId !== 1 ? threadId : undefined,
+        link_preview_options: { is_disabled: true },
+      });
+    }
   }
 
   private async sendApproval(target: TelegramTarget, approval: Approval): Promise<void> {
@@ -248,12 +265,36 @@ function helpText(webUrl: string): string {
     '/new <path> - create and bind a session',
     '/sessions - list sessions',
     '/use <session-id> - bind this chat/topic',
+    '/bind <session-id> - bind this chat/topic',
+    '/current - show current session',
+    '/approvals - list pending approvals',
     '/status - show status',
     '/stop - interrupt current session',
     '/help - show help',
     '',
     `Web: ${webUrl}`,
   ].join('\n');
+}
+
+function formatSession(session: Session): string {
+  return [
+    session.title,
+    session.id,
+    session.cwd,
+    session.status,
+    `Thread: ${session.codexThreadId ?? '-'}`,
+    `Turn: ${session.currentTurnId ?? '-'}`,
+    `Error: ${session.lastError ?? '-'}`,
+  ].join('\n');
+}
+
+function formatApprovals(approvals: Approval[]): string {
+  if (approvals.length === 0) return 'No pending approvals.';
+  return approvals.map((approval, index) => [
+    `${index + 1}. ${approval.toolName}`,
+    approval.id,
+    JSON.stringify(approval.input, null, 2),
+  ].join('\n')).join('\n\n');
 }
 
 function formatStatus(stats: ReturnType<ControlHub['stats']>, sessionId: string | undefined): string {
@@ -322,6 +363,21 @@ function renderTelegramHtml(markdown: string): string {
   html = html.replace(/\u0000CODE_BLOCK_(\d+)\u0000/g, (_match, index: string) => codeBlocks[Number(index)] ?? '');
   html = html.replace(/\u0000INLINE_CODE_(\d+)\u0000/g, (_match, index: string) => inlineCodes[Number(index)] ?? '');
   return html;
+}
+
+function splitTelegramText(text: string): string[] {
+  const limit = 3500;
+  if (text.length <= limit) return [text];
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > limit) {
+    const newline = rest.lastIndexOf('\n', limit);
+    const index = newline > 500 ? newline : limit;
+    chunks.push(rest.slice(0, index));
+    rest = rest.slice(index).trimStart();
+  }
+  if (rest) chunks.push(rest);
+  return chunks;
 }
 
 function sanitizeTelegramError(text: string): string {

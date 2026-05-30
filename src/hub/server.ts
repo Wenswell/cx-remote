@@ -18,9 +18,15 @@ const sendMessageSchema = z.object({
   text: z.string().min(1),
 });
 
+const updateSessionSchema = z.object({
+  title: z.string().min(1),
+});
+
 const resolveApprovalSchema = z.object({
   decision: z.string().min(1),
 });
+
+const approvalStatusSchema = z.enum(['pending', 'resolved', 'expired']);
 
 const updateSettingSchema = z.object({
   key: z.string().min(1),
@@ -60,6 +66,12 @@ export class HubServer {
   createApp(): Hono {
     const app = new Hono();
     app.use('*', cors());
+    app.onError((error, c) => {
+      const status = errorStatus(error);
+      logger.warn('api error', { status, error: error instanceof Error ? error.message : String(error) });
+      return c.json({ error: { message: errorMessage(error) } }, status);
+    });
+    app.notFound((c) => c.json({ error: { message: 'Not found' } }, 404));
 
     app.use('/api/*', async (c, next) => {
       if (c.req.path === '/api/events' && c.req.query('token') === this.config.server.accessToken) {
@@ -67,7 +79,7 @@ export class HubServer {
         return;
       }
       if (!isAuthorized(c.req.header('authorization'), this.config.server.accessToken)) {
-        return c.text('Unauthorized', 401);
+        return c.json({ error: { message: 'Unauthorized' } }, 401);
       }
       await next();
     });
@@ -128,9 +140,24 @@ export class HubServer {
       return c.json({
         session,
         messages: this.hub.listMessages(session.id),
-        approvals: this.hub.store.listPendingApprovals(session.id),
+        approvals: this.hub.listApprovals({ sessionId: session.id, status: 'pending' }),
       });
     });
+
+    app.patch('/api/sessions/:id', async (c) => {
+      const input = updateSessionSchema.parse(await c.req.json());
+      return c.json(this.hub.renameSession(c.req.param('id'), input.title));
+    });
+
+    app.delete('/api/sessions/:id', async (c) => {
+      await this.hub.deleteSession(c.req.param('id'));
+      return c.json({ ok: true });
+    });
+
+    app.get('/api/sessions/:id/messages', (c) => c.json(this.hub.listMessages(c.req.param('id'), {
+      limit: parseLimit(c.req.query('limit'), 200),
+      afterId: c.req.query('afterId') || undefined,
+    })));
 
     app.post('/api/sessions/:id/messages', async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
@@ -145,7 +172,13 @@ export class HubServer {
 
     app.get('/api/approvals', (c) => {
       const sessionId = c.req.query('sessionId');
-      return c.json(this.hub.store.listPendingApprovals(sessionId));
+      const statusParam = c.req.query('status');
+      const status = statusParam && statusParam !== 'all' ? approvalStatusSchema.parse(statusParam) : (statusParam === 'all' ? undefined : 'pending');
+      return c.json(this.hub.listApprovals({
+        sessionId: sessionId || undefined,
+        status,
+        limit: parseLimit(c.req.query('limit'), 100),
+      }));
     });
 
     app.post('/api/approvals/:id/resolve', async (c) => {
@@ -196,4 +229,25 @@ export class HubServer {
 function isAuthorized(header: string | undefined, token: string): boolean {
   if (!header) return false;
   return header === `Bearer ${token}`;
+}
+
+function parseLimit(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) throw new Error('limit must be a number');
+  return parsed;
+}
+
+function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
+  if (error instanceof z.ZodError) return 400;
+  const message = errorMessage(error).toLowerCase();
+  if (message.includes('not found')) return 404;
+  if (message.includes('already running')) return 409;
+  if (error instanceof Error) return 400;
+  return 500;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof z.ZodError) return z.prettifyError(error);
+  return error instanceof Error ? error.message : String(error);
 }

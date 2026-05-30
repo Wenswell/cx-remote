@@ -4,6 +4,16 @@ import { DatabaseSync } from 'node:sqlite';
 import type { Approval, ControlBinding, HubEvent, Message, Session } from '../domain/types.js';
 
 type SqlValue = string | number | null;
+export type ApprovalQuery = {
+  sessionId?: string;
+  status?: Approval['status'];
+  limit?: number;
+};
+
+export type MessageQuery = {
+  limit?: number;
+  afterId?: string;
+};
 
 type SessionRow = Omit<Session, 'config'> & { config_json: string };
 type MessageRow = Omit<Message, 'metadata'> & { metadata_json: string };
@@ -101,11 +111,26 @@ export class Store {
     return message;
   }
 
-  listMessages(sessionId: string, limit = 200): Message[] {
+  listMessages(sessionId: string, input: number | MessageQuery = 200): Message[] {
+    const query = typeof input === 'number' ? { limit: input } : input;
+    const limit = normalizeLimit(query.limit, 200);
+    if (query.afterId) {
+      const cursor = this.db.prepare('SELECT rowid FROM messages WHERE sessionId = ? AND id = ?')
+        .get(sessionId, query.afterId) as { rowid: number } | undefined;
+      if (!cursor) return [];
+      const rows = this.db.prepare(`
+        SELECT * FROM messages
+        WHERE sessionId = ? AND rowid > ?
+        ORDER BY rowid ASC
+        LIMIT ?
+      `).all(sessionId, cursor.rowid, limit) as MessageRow[];
+      return rows.map(decodeMessage);
+    }
+
     const rows = this.db.prepare(`
       SELECT * FROM messages
       WHERE sessionId = ?
-      ORDER BY createdAt DESC
+      ORDER BY rowid DESC
       LIMIT ?
     `).all(sessionId, limit) as MessageRow[];
     return rows.reverse().map(decodeMessage);
@@ -163,6 +188,44 @@ export class Store {
       ? this.db.prepare('SELECT * FROM approvals WHERE status = ? AND sessionId = ? ORDER BY createdAt ASC').all('pending', sessionId) as ApprovalRow[]
       : this.db.prepare('SELECT * FROM approvals WHERE status = ? ORDER BY createdAt ASC').all('pending') as ApprovalRow[];
     return rows.map(decodeApproval);
+  }
+
+  listApprovals(query: ApprovalQuery = {}): Approval[] {
+    const limit = normalizeLimit(query.limit, 100);
+    const clauses: string[] = [];
+    const params: SqlValue[] = [];
+    if (query.sessionId) {
+      clauses.push('sessionId = ?');
+      params.push(query.sessionId);
+    }
+    if (query.status) {
+      clauses.push('status = ?');
+      params.push(query.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT * FROM approvals
+      ${where}
+      ORDER BY createdAt DESC
+      LIMIT ?
+    `).all(...params, limit) as ApprovalRow[];
+    return rows.map(decodeApproval);
+  }
+
+  updateSessionTitle(id: string, title: string): Session | null {
+    const current = this.getSession(id);
+    if (!current) return null;
+    const next = {
+      ...current,
+      title,
+      updatedAt: Date.now(),
+    };
+    return this.updateSession(next);
+  }
+
+  deleteSession(id: string): boolean {
+    const result = this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    return result.changes > 0;
   }
 
   upsertBinding(binding: ControlBinding): ControlBinding {
@@ -290,6 +353,12 @@ export class Store {
 function scalar(db: DatabaseSync, sql: string): number {
   const row = db.prepare(sql).get() as { 'COUNT(*)': number };
   return Number(row['COUNT(*)']);
+}
+
+function normalizeLimit(value: number | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(Math.max(Math.trunc(value), 1), 1000);
 }
 
 function decodeSession(row: SessionRow): Session {
