@@ -12,6 +12,8 @@ export type ApprovalType = 'tool' | 'choice';
 
 export type ApprovalStatus = 'pending' | 'resolved' | 'expired';
 
+export type PromptJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
+
 export interface CodexSessionConfig {
   model?: string;
   reasoningEffort?: string;
@@ -62,6 +64,21 @@ export interface Approval {
   createdAt: number;
   resolvedAt: number | null;
   source: ControlType | null;
+}
+
+export interface PromptJob {
+  id: string;
+  sessionId: string;
+  text: string;
+  source: ControlType;
+  ownerId: string | null;
+  controlLabel: string | null;
+  status: PromptJobStatus;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
 }
 
 export interface ControlBinding {

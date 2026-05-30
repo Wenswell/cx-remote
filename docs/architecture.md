@@ -39,6 +39,7 @@ src/cli.ts        terminal CLI client
 |---|---|
 | `Session` | Codex working directory, status, thread id, model/sandbox config, active control owner |
 | `Message` | user/assistant/tool/system messages for a session |
+| `PromptJob` | persisted per-session prompt queue with `queued`, `running`, `done`, `failed`, and `canceled` states |
 | `Approval` | pending and resolved Codex approvals or choice requests |
 | `ControlBinding` | maps a Web/Telegram/CLI control context to a session |
 | `HubEvent` | persisted event stream for Web and Telegram updates |
@@ -126,7 +127,9 @@ controlLeaseExpiresAt
 controlUpdatedAt
 ```
 
-Web, Telegram, and CLI share observation by default. Any attached control can send while the session is idle. If a turn is already running, `ControlHub.sendMessage()` records the user message and places the prompt in the session queue.
+Web, Telegram, and CLI share observation by default. Any attached control can send while the session is idle. `ControlHub.sendMessage()` records the user message, writes a `PromptJob` to SQLite, and starts the next queued job when the session is free.
+
+Queued jobs survive Hub restart. On startup, leftover `running` jobs are marked `failed` because the owned `codex app-server` process stopped with the Hub; remaining `queued` jobs continue in FIFO order.
 
 `Claim` creates a temporary exclusive lease. While the lease is active, only the matching owner can send. CLI `attach` is shared by default; `cx-tg attach <session-id> --claim` claims a short lease and refreshes it while the process is alive, then releases it on exit.
 

@@ -9,7 +9,7 @@ First usable rebuild:
 - Web control console
 - Telegram control and approval buttons
 - CLI control commands
-- SQLite persistence for sessions, messages, approvals, bindings, and events
+- SQLite persistence for sessions, messages, prompt queue, approvals, bindings, and events
 - Codex execution through `codex app-server`
 - Telegram is the only IM control in this version
 
@@ -66,7 +66,7 @@ The Web console can:
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
 - claim or release exclusive session control
-- queue input while a Codex turn is already running
+- queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename and delete sessions
 - interrupt a running turn
 
@@ -183,8 +183,10 @@ See [docs/config.md](docs/config.md) for the full structure.
 ## Verification
 
 ```bash
+pnpm test
 pnpm typecheck
 pnpm build
+pnpm check
 node dist/main.js --help
 CX_TG_HOME=/tmp/cx-tg-demo node dist/main.js hub
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:3030/api/health

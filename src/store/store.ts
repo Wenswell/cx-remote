@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { Approval, ControlBinding, HubEvent, Message, Session } from '../domain/types.js';
+import type { Approval, ControlBinding, HubEvent, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
 
 type SqlValue = string | number | null;
 export type ApprovalQuery = {
@@ -15,6 +15,12 @@ export type MessageQuery = {
   afterId?: string;
 };
 
+export type PromptJobQuery = {
+  sessionId?: string;
+  statuses?: PromptJobStatus[];
+  limit?: number;
+};
+
 export type SessionControlInput = {
   controlOwner: Session['controlOwner'];
   controlOwnerId: string | null;
@@ -26,6 +32,7 @@ export type SessionControlInput = {
 type SessionRow = Omit<Session, 'config'> & { config_json: string };
 type MessageRow = Omit<Message, 'metadata'> & { metadata_json: string };
 type ApprovalRow = Omit<Approval, 'input' | 'response'> & { input_json: string; response_json: string | null };
+type PromptJobRow = PromptJob;
 type EventRow = Omit<HubEvent, 'payload'> & { payload_json: string };
 
 export class Store {
@@ -236,6 +243,159 @@ export class Store {
     return rows.map(decodeApproval);
   }
 
+  createPromptJob(job: PromptJob): PromptJob {
+    this.db.prepare(`
+      INSERT INTO prompt_jobs (
+        id, sessionId, text, source, ownerId, controlLabel, status, error,
+        createdAt, updatedAt, startedAt, finishedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      job.id,
+      job.sessionId,
+      job.text,
+      job.source,
+      job.ownerId,
+      job.controlLabel,
+      job.status,
+      job.error,
+      job.createdAt,
+      job.updatedAt,
+      job.startedAt,
+      job.finishedAt,
+    );
+    return job;
+  }
+
+  updatePromptJob(job: PromptJob): PromptJob {
+    this.db.prepare(`
+      UPDATE prompt_jobs SET
+        text = ?,
+        source = ?,
+        ownerId = ?,
+        controlLabel = ?,
+        status = ?,
+        error = ?,
+        updatedAt = ?,
+        startedAt = ?,
+        finishedAt = ?
+      WHERE id = ?
+    `).run(
+      job.text,
+      job.source,
+      job.ownerId,
+      job.controlLabel,
+      job.status,
+      job.error,
+      job.updatedAt,
+      job.startedAt,
+      job.finishedAt,
+      job.id,
+    );
+    return job;
+  }
+
+  getPromptJob(id: string): PromptJob | null {
+    const row = this.db.prepare('SELECT * FROM prompt_jobs WHERE id = ?').get(id) as PromptJobRow | undefined;
+    return row ? decodePromptJob(row) : null;
+  }
+
+  listPromptJobs(query: PromptJobQuery = {}): PromptJob[] {
+    const limit = normalizeLimit(query.limit, 200);
+    const clauses: string[] = [];
+    const params: SqlValue[] = [];
+    if (query.sessionId) {
+      clauses.push('sessionId = ?');
+      params.push(query.sessionId);
+    }
+    const statuses = uniqueStatuses(query.statuses);
+    if (statuses.length > 0) {
+      clauses.push(`status IN (${statuses.map(() => '?').join(', ')})`);
+      params.push(...statuses);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const rows = this.db.prepare(`
+      SELECT * FROM prompt_jobs
+      ${where}
+      ORDER BY createdAt ASC, rowid ASC
+      LIMIT ?
+    `).all(...params, limit) as unknown as PromptJobRow[];
+    return rows.map(decodePromptJob);
+  }
+
+  getNextQueuedPromptJob(sessionId: string): PromptJob | null {
+    const row = this.db.prepare(`
+      SELECT * FROM prompt_jobs
+      WHERE sessionId = ? AND status = 'queued'
+      ORDER BY createdAt ASC, rowid ASC
+      LIMIT 1
+    `).get(sessionId) as PromptJobRow | undefined;
+    return row ? decodePromptJob(row) : null;
+  }
+
+  getRunningPromptJob(sessionId: string): PromptJob | null {
+    const row = this.db.prepare(`
+      SELECT * FROM prompt_jobs
+      WHERE sessionId = ? AND status = 'running'
+      ORDER BY startedAt ASC, rowid ASC
+      LIMIT 1
+    `).get(sessionId) as PromptJobRow | undefined;
+    return row ? decodePromptJob(row) : null;
+  }
+
+  updatePromptJobStatus(
+    id: string,
+    status: PromptJobStatus,
+    patch: { error?: string | null; startedAt?: number | null; finishedAt?: number | null } = {},
+  ): PromptJob | null {
+    const current = this.getPromptJob(id);
+    if (!current) return null;
+    return this.updatePromptJob({
+      ...current,
+      status,
+      error: patch.error === undefined ? current.error : patch.error,
+      startedAt: patch.startedAt === undefined ? current.startedAt : patch.startedAt,
+      finishedAt: patch.finishedAt === undefined ? current.finishedAt : patch.finishedAt,
+      updatedAt: Date.now(),
+    });
+  }
+
+  cancelPromptJobs(sessionId: string, statuses: PromptJobStatus[], error: string | null): number {
+    const targets = uniqueStatuses(statuses);
+    if (targets.length === 0) return 0;
+    const now = Date.now();
+    const result = this.db.prepare(`
+      UPDATE prompt_jobs SET
+        status = 'canceled',
+        error = ?,
+        updatedAt = ?,
+        finishedAt = COALESCE(finishedAt, ?)
+      WHERE sessionId = ? AND status IN (${targets.map(() => '?').join(', ')})
+    `).run(error, now, now, sessionId, ...targets);
+    return Number(result.changes);
+  }
+
+  failRunningPromptJobs(error: string): number {
+    const now = Date.now();
+    const result = this.db.prepare(`
+      UPDATE prompt_jobs SET
+        status = 'failed',
+        error = ?,
+        updatedAt = ?,
+        finishedAt = COALESCE(finishedAt, ?)
+      WHERE status = 'running'
+    `).run(error, now, now);
+    return Number(result.changes);
+  }
+
+  listSessionsWithQueuedPromptJobs(): string[] {
+    const rows = this.db.prepare(`
+      SELECT DISTINCT sessionId FROM prompt_jobs
+      WHERE status = 'queued'
+      ORDER BY sessionId ASC
+    `).all() as Array<{ sessionId: string }>;
+    return rows.map((row) => row.sessionId);
+  }
+
   updateSessionTitle(id: string, title: string): Session | null {
     const current = this.getSession(id);
     if (!current) return null;
@@ -307,11 +467,28 @@ export class Store {
     return rows.map(decodeEvent);
   }
 
-  stats(): { sessions: number; messages: number; pendingApprovals: number } {
+  countPromptJobs(statuses: PromptJobStatus[], sessionId?: string): number {
+    const targets = uniqueStatuses(statuses);
+    if (targets.length === 0) return 0;
+    const clauses = [`status IN (${targets.map(() => '?').join(', ')})`];
+    const params: SqlValue[] = [...targets];
+    if (sessionId) {
+      clauses.push('sessionId = ?');
+      params.push(sessionId);
+    }
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM prompt_jobs
+      WHERE ${clauses.join(' AND ')}
+    `).get(...params) as { count: number };
+    return Number(row.count);
+  }
+
+  stats(): { sessions: number; messages: number; pendingApprovals: number; queuedPrompts: number } {
     return {
       sessions: scalar(this.db, 'SELECT COUNT(*) FROM sessions'),
       messages: scalar(this.db, 'SELECT COUNT(*) FROM messages'),
       pendingApprovals: scalar(this.db, "SELECT COUNT(*) FROM approvals WHERE status = 'pending'"),
+      queuedPrompts: this.countPromptJobs(['queued']),
     };
   }
 
@@ -365,6 +542,24 @@ export class Store {
 
       CREATE INDEX IF NOT EXISTS idx_approvals_status_session
         ON approvals(status, sessionId, createdAt);
+
+      CREATE TABLE IF NOT EXISTS prompt_jobs (
+        id TEXT PRIMARY KEY,
+        sessionId TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        text TEXT NOT NULL,
+        source TEXT NOT NULL,
+        ownerId TEXT,
+        controlLabel TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'done', 'failed', 'canceled')),
+        error TEXT,
+        createdAt INTEGER NOT NULL,
+        updatedAt INTEGER NOT NULL,
+        startedAt INTEGER,
+        finishedAt INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_prompt_jobs_session_status_created
+        ON prompt_jobs(sessionId, status, createdAt);
 
       CREATE TABLE IF NOT EXISTS bindings (
         id TEXT PRIMARY KEY,
@@ -443,11 +638,26 @@ function decodeApproval(row: ApprovalRow): Approval {
   };
 }
 
+function decodePromptJob(row: PromptJobRow): PromptJob {
+  return {
+    ...row,
+    ownerId: row.ownerId ?? null,
+    controlLabel: row.controlLabel ?? null,
+    error: row.error ?? null,
+    startedAt: row.startedAt ?? null,
+    finishedAt: row.finishedAt ?? null,
+  };
+}
+
 function decodeEvent(row: EventRow): HubEvent {
   return {
     ...row,
     payload: JSON.parse(row.payload_json) as Record<string, unknown>,
   };
+}
+
+function uniqueStatuses(statuses: PromptJobStatus[] | undefined): PromptJobStatus[] {
+  return [...new Set(statuses ?? [])];
 }
 
 export function sqlJson(value: unknown): SqlValue {

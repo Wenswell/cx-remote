@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { Approval, CodexEvent, ControlBinding, ControlType, Message, Session } from '../domain/types.js';
+import type { Approval, CodexEvent, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
 import type { ApprovalQuery, MessageQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
@@ -28,17 +28,11 @@ type ControlSourceInput = {
   label?: string;
 };
 
-type QueuedPrompt = {
-  sessionId: string;
-  text: string;
-  source: ControlType;
-};
-
 const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
+const INTERRUPTED_RESTART_ERROR = 'Hub restarted before the Codex turn finished';
 
 export class ControlHub {
   private readonly runtimes = new Map<string, RuntimeEntry>();
-  private readonly promptQueues = new Map<string, QueuedPrompt[]>();
   private readonly pumpingSessions = new Set<string>();
 
   constructor(
@@ -46,13 +40,14 @@ export class ControlHub {
     readonly store: Store,
     readonly events: EventBus,
     readonly permissions: PermissionService,
-  ) {}
+  ) {
+    this.recoverPromptQueue();
+  }
 
   stats(): { sessions: number; messages: number; pendingApprovals: number; runtimes: number; queuedPrompts: number } {
     return {
       ...this.store.stats(),
       runtimes: this.runtimes.size,
-      queuedPrompts: [...this.promptQueues.values()].reduce((total, queue) => total + queue.length, 0),
     };
   }
 
@@ -139,7 +134,6 @@ export class ControlHub {
       await entry.runtime.stop();
       this.runtimes.delete(sessionId);
     }
-    this.promptQueues.delete(sessionId);
     this.pumpingSessions.delete(sessionId);
     this.store.deleteSession(sessionId);
     this.events.publish({ type: 'session.deleted', sessionId, payload: { session } });
@@ -199,7 +193,9 @@ export class ControlHub {
     if (!trimmed) throw new Error('Message text is required');
     const session = this.getSession(sessionId);
     this.assertControl(session, source, control.ownerId);
-    const queued = this.isBusy(session) || this.pumpingSessions.has(sessionId) || (this.promptQueues.get(sessionId)?.length ?? 0) > 0;
+    const queued = this.isBusy(session)
+      || this.pumpingSessions.has(sessionId)
+      || this.store.countPromptJobs(['queued', 'running'], sessionId) > 0;
 
     const userMessage = this.addMessage({
       sessionId,
@@ -213,27 +209,28 @@ export class ControlHub {
       sessionId,
       text: trimmed,
       source,
+      ownerId: control.ownerId ?? null,
+      controlLabel: control.label ?? null,
     });
     void this.pumpPromptQueue(sessionId);
     return userMessage;
   }
 
-  private async startPrompt(sessionId: string, text: string, source: ControlType): Promise<void> {
-    const entry = await this.ensureRuntime(sessionId);
-    entry.output = '';
-    this.patchSession(sessionId, { status: 'running', lastError: null });
-
-    void entry.runtime.sendPrompt(text).catch((error) => {
+  private async startPrompt(job: PromptJob): Promise<void> {
+    let entry: RuntimeEntry;
+    try {
+      entry = await this.ensureRuntime(job.sessionId);
+    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.addMessage({
-        sessionId,
-        role: 'system',
-        kind: 'error',
-        content: message,
-        metadata: { source: 'runtime' },
-      });
-      this.patchSession(sessionId, { status: 'error', lastError: message, currentTurnId: null });
-      this.events.publish({ type: 'runtime.error', sessionId, payload: { error: message } });
+      this.failPromptJob(job, message);
+      return;
+    }
+    entry.output = '';
+    this.patchSession(job.sessionId, { status: 'running', lastError: null });
+
+    void entry.runtime.sendPrompt(job.text).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.failPromptJob(job, message);
     });
   }
 
@@ -241,7 +238,8 @@ export class ControlHub {
     this.getSession(sessionId);
     const entry = this.runtimes.get(sessionId);
     await entry?.runtime.interrupt();
-    this.promptQueues.delete(sessionId);
+    this.store.cancelPromptJobs(sessionId, ['queued', 'running'], 'interrupted');
+    this.publishQueueStatus(sessionId);
     this.patchSession(sessionId, { status: 'idle', currentTurnId: null });
   }
 
@@ -251,9 +249,20 @@ export class ControlHub {
 
   async shutdown(): Promise<void> {
     this.permissions.shutdown();
+    for (const sessionId of this.runtimes.keys()) {
+      this.store.cancelPromptJobs(sessionId, ['running'], 'hub shutdown');
+      const session = this.store.getSession(sessionId);
+      if (session && this.isBusy(session)) {
+        this.store.updateSession({
+          ...session,
+          status: 'idle',
+          currentTurnId: null,
+          updatedAt: Date.now(),
+        });
+      }
+    }
     await Promise.all([...this.runtimes.values()].map((entry) => entry.runtime.stop().catch(() => {})));
     this.runtimes.clear();
-    this.promptQueues.clear();
   }
 
   private async ensureRuntime(sessionId: string): Promise<RuntimeEntry> {
@@ -338,6 +347,8 @@ export class ControlHub {
         metadata: {},
       });
       if (entry) entry.output = '';
+      this.finishRunningPrompt(sessionId, 'done', null);
+      this.publishQueueStatus(sessionId);
       this.patchSession(sessionId, { status: 'idle', currentTurnId: null, lastError: null });
       void this.pumpPromptQueue(sessionId);
       return;
@@ -353,7 +364,9 @@ export class ControlHub {
         metadata: { event },
       });
       if (entry) entry.output = '';
-      this.promptQueues.delete(sessionId);
+      this.finishRunningPrompt(sessionId, 'failed', error);
+      this.store.cancelPromptJobs(sessionId, ['queued'], 'previous prompt failed');
+      this.publishQueueStatus(sessionId);
       this.patchSession(sessionId, { status: 'error', currentTurnId: null, lastError: error });
       return;
     }
@@ -367,16 +380,36 @@ export class ControlHub {
         metadata: { event },
       });
       if (entry) entry.output = '';
-      this.promptQueues.delete(sessionId);
+      this.store.cancelPromptJobs(sessionId, ['queued', 'running'], 'turn aborted');
+      this.publishQueueStatus(sessionId);
       this.patchSession(sessionId, { status: 'idle', currentTurnId: null });
     }
   }
 
-  private enqueuePrompt(prompt: QueuedPrompt): void {
-    const queue = this.promptQueues.get(prompt.sessionId) ?? [];
-    queue.push(prompt);
-    this.promptQueues.set(prompt.sessionId, queue);
-    this.events.publish({ type: 'session.updated', sessionId: prompt.sessionId, payload: { queuedPrompts: queue.length } });
+  private enqueuePrompt(prompt: {
+    sessionId: string;
+    text: string;
+    source: ControlType;
+    ownerId: string | null;
+    controlLabel: string | null;
+  }): PromptJob {
+    const now = Date.now();
+    const job = this.store.createPromptJob({
+      id: randomUUID(),
+      sessionId: prompt.sessionId,
+      text: prompt.text,
+      source: prompt.source,
+      ownerId: prompt.ownerId,
+      controlLabel: prompt.controlLabel,
+      status: 'queued',
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+      startedAt: null,
+      finishedAt: null,
+    });
+    this.publishQueueStatus(prompt.sessionId);
+    return job;
   }
 
   private async pumpPromptQueue(sessionId: string): Promise<void> {
@@ -385,12 +418,16 @@ export class ControlHub {
     try {
       const session = this.getSession(sessionId);
       if (this.isBusy(session)) return;
-      const queue = this.promptQueues.get(sessionId);
-      if (!queue) return;
-      const next = queue.shift();
+      const next = this.store.getNextQueuedPromptJob(sessionId);
       if (!next) return;
-      if (queue.length === 0) this.promptQueues.delete(sessionId);
-      await this.startPrompt(sessionId, next.text, next.source);
+      const running = this.store.updatePromptJobStatus(next.id, 'running', {
+        error: null,
+        startedAt: Date.now(),
+        finishedAt: null,
+      });
+      if (!running) return;
+      this.publishQueueStatus(sessionId);
+      await this.startPrompt(running);
     } finally {
       this.pumpingSessions.delete(sessionId);
     }
@@ -417,6 +454,57 @@ export class ControlHub {
     });
     this.events.publish({ type: 'session.updated', sessionId, payload: { session } });
     return session;
+  }
+
+  private publishQueueStatus(sessionId: string): void {
+    this.events.publish({
+      type: 'session.updated',
+      sessionId,
+      payload: { queuedPrompts: this.store.countPromptJobs(['queued'], sessionId) },
+    });
+  }
+
+  private finishRunningPrompt(sessionId: string, status: Extract<PromptJobStatus, 'done' | 'failed' | 'canceled'>, error: string | null): void {
+    const running = this.store.getRunningPromptJob(sessionId);
+    if (!running) return;
+    this.store.updatePromptJobStatus(running.id, status, { error, finishedAt: Date.now() });
+  }
+
+  private failPromptJob(job: PromptJob, message: string): void {
+    const current = this.store.getPromptJob(job.id);
+    if (!current || current.status !== 'running') return;
+    this.store.updatePromptJobStatus(job.id, 'failed', { error: message, finishedAt: Date.now() });
+    this.addMessage({
+      sessionId: job.sessionId,
+      role: 'system',
+      kind: 'error',
+      content: message,
+      metadata: { source: 'runtime' },
+    });
+    this.patchSession(job.sessionId, { status: 'error', lastError: message, currentTurnId: null });
+    this.publishQueueStatus(job.sessionId);
+    this.events.publish({ type: 'runtime.error', sessionId: job.sessionId, payload: { error: message } });
+  }
+
+  private recoverPromptQueue(): void {
+    const failed = this.store.failRunningPromptJobs(INTERRUPTED_RESTART_ERROR);
+    if (failed > 0) logger.warn('running prompt jobs marked failed after restart', { failed });
+
+    for (const session of this.store.listSessions()) {
+      if (session.status === 'running' || session.status === 'waiting_approval') {
+        this.store.updateSession({
+          ...session,
+          status: 'error',
+          currentTurnId: null,
+          lastError: INTERRUPTED_RESTART_ERROR,
+          updatedAt: Date.now(),
+        });
+      }
+    }
+
+    for (const sessionId of this.store.listSessionsWithQueuedPromptJobs()) {
+      void this.pumpPromptQueue(sessionId);
+    }
   }
 
   private assertControl(session: Session, source: ControlType, ownerId: string | undefined): void {
