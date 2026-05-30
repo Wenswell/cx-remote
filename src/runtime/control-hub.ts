@@ -28,10 +28,18 @@ type ControlSourceInput = {
   label?: string;
 };
 
+type QueuedPrompt = {
+  sessionId: string;
+  text: string;
+  source: ControlType;
+};
+
 const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
 
 export class ControlHub {
   private readonly runtimes = new Map<string, RuntimeEntry>();
+  private readonly promptQueues = new Map<string, QueuedPrompt[]>();
+  private readonly pumpingSessions = new Set<string>();
 
   constructor(
     readonly config: AppConfig,
@@ -40,10 +48,11 @@ export class ControlHub {
     readonly permissions: PermissionService,
   ) {}
 
-  stats(): { sessions: number; messages: number; pendingApprovals: number; runtimes: number } {
+  stats(): { sessions: number; messages: number; pendingApprovals: number; runtimes: number; queuedPrompts: number } {
     return {
       ...this.store.stats(),
       runtimes: this.runtimes.size,
+      queuedPrompts: [...this.promptQueues.values()].reduce((total, queue) => total + queue.length, 0),
     };
   }
 
@@ -130,12 +139,17 @@ export class ControlHub {
       await entry.runtime.stop();
       this.runtimes.delete(sessionId);
     }
+    this.promptQueues.delete(sessionId);
+    this.pumpingSessions.delete(sessionId);
     this.store.deleteSession(sessionId);
     this.events.publish({ type: 'session.deleted', sessionId, payload: { session } });
   }
 
   claimControl(sessionId: string, input: ControlLeaseInput): Session {
-    this.getSession(sessionId);
+    const current = this.getSession(sessionId);
+    if (current.controlOwnerId && !isExpiredControl(current) && current.controlOwnerId !== input.ownerId) {
+      throw new Error(`Session is controlled by ${current.controlLabel ?? current.controlOwnerId}`);
+    }
     const now = Date.now();
     const session = this.store.updateSessionControl(sessionId, {
       controlOwner: input.controlType,
@@ -185,21 +199,31 @@ export class ControlHub {
     if (!trimmed) throw new Error('Message text is required');
     const session = this.getSession(sessionId);
     this.assertControl(session, source, control.ownerId);
-    if (session.status === 'running') throw new Error('Session is already running');
+    const queued = this.isBusy(session) || this.pumpingSessions.has(sessionId) || (this.promptQueues.get(sessionId)?.length ?? 0) > 0;
 
     const userMessage = this.addMessage({
       sessionId,
       role: 'user',
       kind: 'text',
       content: trimmed,
-      metadata: { source, ownerId: control.ownerId, controlLabel: control.label },
+      metadata: { source, ownerId: control.ownerId, controlLabel: control.label, queued },
     });
 
-    const entry = await this.ensureRuntime(session.id);
-    entry.output = '';
-    this.patchSession(session.id, { status: 'running', lastError: null });
+    this.enqueuePrompt({
+      sessionId,
+      text: trimmed,
+      source,
+    });
+    void this.pumpPromptQueue(sessionId);
+    return userMessage;
+  }
 
-    void entry.runtime.sendPrompt(trimmed).catch((error) => {
+  private async startPrompt(sessionId: string, text: string, source: ControlType): Promise<void> {
+    const entry = await this.ensureRuntime(sessionId);
+    entry.output = '';
+    this.patchSession(sessionId, { status: 'running', lastError: null });
+
+    void entry.runtime.sendPrompt(text).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       this.addMessage({
         sessionId,
@@ -211,14 +235,13 @@ export class ControlHub {
       this.patchSession(sessionId, { status: 'error', lastError: message, currentTurnId: null });
       this.events.publish({ type: 'runtime.error', sessionId, payload: { error: message } });
     });
-
-    return userMessage;
   }
 
   async interrupt(sessionId: string): Promise<void> {
     this.getSession(sessionId);
     const entry = this.runtimes.get(sessionId);
     await entry?.runtime.interrupt();
+    this.promptQueues.delete(sessionId);
     this.patchSession(sessionId, { status: 'idle', currentTurnId: null });
   }
 
@@ -230,6 +253,7 @@ export class ControlHub {
     this.permissions.shutdown();
     await Promise.all([...this.runtimes.values()].map((entry) => entry.runtime.stop().catch(() => {})));
     this.runtimes.clear();
+    this.promptQueues.clear();
   }
 
   private async ensureRuntime(sessionId: string): Promise<RuntimeEntry> {
@@ -315,6 +339,7 @@ export class ControlHub {
       });
       if (entry) entry.output = '';
       this.patchSession(sessionId, { status: 'idle', currentTurnId: null, lastError: null });
+      void this.pumpPromptQueue(sessionId);
       return;
     }
 
@@ -328,6 +353,7 @@ export class ControlHub {
         metadata: { event },
       });
       if (entry) entry.output = '';
+      this.promptQueues.delete(sessionId);
       this.patchSession(sessionId, { status: 'error', currentTurnId: null, lastError: error });
       return;
     }
@@ -341,7 +367,32 @@ export class ControlHub {
         metadata: { event },
       });
       if (entry) entry.output = '';
+      this.promptQueues.delete(sessionId);
       this.patchSession(sessionId, { status: 'idle', currentTurnId: null });
+    }
+  }
+
+  private enqueuePrompt(prompt: QueuedPrompt): void {
+    const queue = this.promptQueues.get(prompt.sessionId) ?? [];
+    queue.push(prompt);
+    this.promptQueues.set(prompt.sessionId, queue);
+    this.events.publish({ type: 'session.updated', sessionId: prompt.sessionId, payload: { queuedPrompts: queue.length } });
+  }
+
+  private async pumpPromptQueue(sessionId: string): Promise<void> {
+    if (this.pumpingSessions.has(sessionId)) return;
+    this.pumpingSessions.add(sessionId);
+    try {
+      const session = this.getSession(sessionId);
+      if (this.isBusy(session)) return;
+      const queue = this.promptQueues.get(sessionId);
+      if (!queue) return;
+      const next = queue.shift();
+      if (!next) return;
+      if (queue.length === 0) this.promptQueues.delete(sessionId);
+      await this.startPrompt(sessionId, next.text, next.source);
+    } finally {
+      this.pumpingSessions.delete(sessionId);
     }
   }
 
@@ -370,7 +421,7 @@ export class ControlHub {
 
   private assertControl(session: Session, source: ControlType, ownerId: string | undefined): void {
     if (!session.controlOwner || !session.controlOwnerId) return;
-    if (session.controlLeaseExpiresAt && session.controlLeaseExpiresAt <= Date.now()) {
+    if (isExpiredControl(session)) {
       this.clearControl(session.id);
       return;
     }
@@ -390,8 +441,16 @@ export class ControlHub {
     this.events.publish({ type: 'session.control.updated', sessionId, payload: { session } });
     return session;
   }
+
+  private isBusy(session: Session): boolean {
+    return session.status === 'running' || session.status === 'waiting_approval';
+  }
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
+}
+
+function isExpiredControl(session: Session): boolean {
+  return Boolean(session.controlLeaseExpiresAt && session.controlLeaseExpiresAt <= Date.now());
 }

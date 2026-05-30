@@ -126,7 +126,9 @@ controlLeaseExpiresAt
 controlUpdatedAt
 ```
 
-Web, Telegram, and CLI can claim a lease before sending. `ControlHub.sendMessage()` checks the lease in one place, so all controls follow the same rule. CLI `attach` claims a short lease and refreshes it while the process is alive, then releases it on exit.
+Web, Telegram, and CLI share observation by default. Any attached control can send while the session is idle. If a turn is already running, `ControlHub.sendMessage()` records the user message and places the prompt in the session queue.
+
+`Claim` creates a temporary exclusive lease. While the lease is active, only the matching owner can send. CLI `attach` is shared by default; `cx-tg attach <session-id> --claim` claims a short lease and refreshes it while the process is alive, then releases it on exit.
 
 ## First Version Boundaries
 

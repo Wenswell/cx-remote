@@ -299,7 +299,7 @@ export function webPage(): string {
 
     async function loadAll() {
       const status = await api('/api/status');
-      $('status').textContent = status.stats.sessions + ' sessions · ' + status.stats.pendingApprovals + ' approvals';
+      $('status').textContent = status.stats.sessions + ' sessions · ' + status.stats.pendingApprovals + ' approvals · ' + status.stats.queuedPrompts + ' queued';
       await loadWorkspaces();
       sessions = await api('/api/sessions');
       if (activeSessionId && !sessions.some((session) => session.id === activeSessionId)) activeSessionId = '';
@@ -441,7 +441,8 @@ export function webPage(): string {
     function messageNode(message) {
       const div = document.createElement('div');
       div.className = 'msg ' + message.role + (message.kind === 'error' ? ' error' : '');
-      div.textContent = '[' + message.role + ']\\n' + message.content;
+      const queued = message.metadata?.queued ? ' queued' : '';
+      div.textContent = '[' + message.role + queued + ']\\n' + message.content;
       return div;
     }
 
@@ -534,7 +535,16 @@ export function webPage(): string {
           loadAll().catch(console.error);
           return;
         }
-        if (['message.created', 'approval.created', 'approval.resolved', 'session.updated', 'session.control.updated'].includes(data.type)) {
+        if (data.type === 'message.created') {
+          const message = data.payload?.message;
+          if (message) {
+            messages.push(message);
+            if (message.role === 'assistant') streamBuffer = '';
+            renderMessages();
+            return;
+          }
+        }
+        if (['approval.created', 'approval.resolved', 'session.control.updated'].includes(data.type)) {
           loadSession().catch(console.error);
         }
       };

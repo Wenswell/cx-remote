@@ -90,13 +90,13 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       const sessionId = argv[1];
       const text = argv.slice(2).join(' ');
       if (!sessionId || !text) throw new Error('Usage: cx-tg send <session-id> <text>');
-      console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text }), null, 2));
+      console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, controlType: 'cli' }), null, 2));
       return;
     }
     case 'attach': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg attach <session-id>');
-      await attachSession(client, sessionId);
+      if (!sessionId) throw new Error('Usage: cx-tg attach <session-id> [--claim]');
+      await attachSession(client, sessionId, hasFlag(argv, '--claim'));
       return;
     }
     case 'stop': {
@@ -274,7 +274,7 @@ function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknow
   console.log(json ? JSON.stringify(value, null, 2) : formatter(value));
 }
 
-async function attachSession(client: ApiClient, sessionId: string): Promise<void> {
+async function attachSession(client: ApiClient, sessionId: string, claimExclusive: boolean): Promise<void> {
   const ownerId = `cli:${hostname()}:${process.pid}`;
   const controlLabel = `CLI ${hostname()}:${process.pid}`;
   const ttlMs = 30_000;
@@ -285,10 +285,10 @@ async function attachSession(client: ApiClient, sessionId: string): Promise<void
     ttlMs,
   });
 
-  await claim();
+  if (claimExclusive) await claim();
   const history = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=50`);
   console.log(formatMessages(history));
-  console.log('Attached. Type .exit to release control.');
+  console.log(claimExclusive ? 'Attached with exclusive control. Type .exit to release control.' : 'Attached shared. Type .exit to leave.');
 
   let streamed = false;
   let closed = false;
@@ -303,11 +303,13 @@ async function attachSession(client: ApiClient, sessionId: string): Promise<void
     console.error(error.message);
     prompt();
   });
-  const heartbeat = setInterval(() => {
-    void claim().catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-    });
-  }, 15_000);
+  const heartbeat = claimExclusive
+    ? setInterval(() => {
+      void claim().catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+      });
+    }, 15_000)
+    : undefined;
 
   try {
     rl.prompt();
@@ -315,14 +317,14 @@ async function attachSession(client: ApiClient, sessionId: string): Promise<void
       void (async () => {
         const text = line.trim();
         if (!text) {
-          rl.prompt();
+          prompt();
           return;
         }
         if (text === '.exit' || text === '/exit' || text === '/quit') {
           rl.close();
           return;
         }
-        await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, ownerId, controlLabel });
+        await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, controlType: 'cli', ownerId, controlLabel });
         prompt();
       })().catch((error) => {
         console.error(error instanceof Error ? error.message : String(error));
@@ -337,9 +339,9 @@ async function attachSession(client: ApiClient, sessionId: string): Promise<void
     });
   } finally {
     closed = true;
-    clearInterval(heartbeat);
+    if (heartbeat) clearInterval(heartbeat);
     stopStream();
-    await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}/control?ownerId=${encodeURIComponent(ownerId)}`).catch(() => {});
+    if (claimExclusive) await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}/control?ownerId=${encodeURIComponent(ownerId)}`).catch(() => {});
   }
 }
 
@@ -382,7 +384,7 @@ function formatStatus(value: unknown): string {
     server?: { host?: string; port?: number; publicUrl?: string };
     workspaceRoots?: string[];
     controls?: { telegram?: { enabled?: boolean } };
-    stats?: { sessions?: number; messages?: number; pendingApprovals?: number; runtimes?: number };
+    stats?: { sessions?: number; messages?: number; pendingApprovals?: number; runtimes?: number; queuedPrompts?: number };
   };
   return [
     `Hub: ${status.server?.host}:${status.server?.port}`,
@@ -391,6 +393,7 @@ function formatStatus(value: unknown): string {
     `Messages: ${status.stats?.messages ?? 0}`,
     `Pending approvals: ${status.stats?.pendingApprovals ?? 0}`,
     `Active runtimes: ${status.stats?.runtimes ?? 0}`,
+    `Queued prompts: ${status.stats?.queuedPrompts ?? 0}`,
     `Telegram: ${status.controls?.telegram?.enabled ? 'enabled' : 'disabled'}`,
     `Workspace roots: ${(status.workspaceRoots ?? []).join(', ')}`,
   ].join('\n');
@@ -432,10 +435,10 @@ function formatSessionDetail(value: unknown): string {
 }
 
 function formatMessages(value: unknown): string {
-  const messages = value as Array<{ role: string; kind: string; content: string; createdAt: number }>;
+  const messages = value as Array<{ role: string; kind: string; content: string; createdAt: number; metadata?: { queued?: boolean } }>;
   if (messages.length === 0) return 'No messages.';
   return messages.map((message) => [
-    `[${new Date(message.createdAt).toISOString()}] ${message.role}/${message.kind}`,
+    `[${new Date(message.createdAt).toISOString()}] ${message.role}/${message.kind}${message.metadata?.queued ? ' queued' : ''}`,
     message.content,
   ].join('\n')).join('\n\n');
 }
@@ -469,7 +472,8 @@ function printHelp(): void {
     '  cx-tg messages <session-id>       Show session messages',
     '  cx-tg new --cwd <path>            Create session',
     '  cx-tg send <session-id> <text>    Send message',
-    '  cx-tg attach <session-id>         Attach CLI to a session',
+    '  cx-tg attach <session-id>         Attach shared CLI to a session',
+    '  cx-tg attach <session-id> --claim Attach with exclusive control',
     '  cx-tg stop <session-id>           Interrupt session',
     '  cx-tg rename <session-id> <title> Rename session',
     '  cx-tg delete <session-id>         Delete session',

@@ -16,8 +16,11 @@ const createSessionSchema = z.object({
   bypassApprovalsAndSandbox: z.boolean().optional(),
 });
 
+const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
+
 const sendMessageSchema = z.object({
   text: z.string().min(1),
+  controlType: controlTypeSchema.default('web'),
   ownerId: z.string().optional(),
   controlLabel: z.string().optional(),
 });
@@ -31,7 +34,6 @@ const resolveApprovalSchema = z.object({
 });
 
 const approvalStatusSchema = z.enum(['pending', 'resolved', 'expired']);
-const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
 
 const claimControlSchema = z.object({
   controlType: controlTypeSchema,
@@ -221,7 +223,7 @@ export class HubServer {
 
     app.post('/api/sessions/:id/messages', async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
-      const message = await this.hub.sendMessage(c.req.param('id'), input.text, 'web', {
+      const message = await this.hub.sendMessage(c.req.param('id'), input.text, input.controlType, {
         ownerId: input.ownerId,
         label: input.controlLabel,
       });
@@ -305,7 +307,7 @@ function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof z.ZodError) return 400;
   const message = errorMessage(error).toLowerCase();
   if (message.includes('not found')) return 404;
-  if (message.includes('already running')) return 409;
+  if (message.includes('already running') || message.includes('controlled by')) return 409;
   if (error instanceof Error) return 400;
   return 500;
 }
