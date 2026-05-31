@@ -1,17 +1,16 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, relative, resolve } from 'node:path';
+import { dirname, basename, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import type { PromptJobStatus } from '../domain/types.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import { encodeSseFrame } from '../runtime/sse.js';
-import { webPage } from '../web/page.js';
-import { webScript } from '../web/script.js';
-import { webStyles } from '../web/styles.js';
 import { logger } from '../logger.js';
 
 const createSessionSchema = z.object({
@@ -55,12 +54,17 @@ const updateSettingSchema = z.object({
 
 const WEB_AUTH_COOKIE = 'cx_tg_auth';
 
+export type HubServerOptions = {
+  webDistDir?: string;
+};
+
 export class HubServer {
   private server: ServerType | null = null;
 
   constructor(
     private readonly hub: ControlHub,
     private readonly config: AppConfig,
+    private readonly options: HubServerOptions = {},
   ) {}
 
   start(): void {
@@ -87,6 +91,10 @@ export class HubServer {
 
   createApp(): Hono {
     const app = new Hono();
+    const webDistDir = this.options.webDistDir || defaultWebDistDir();
+    const serveWebIndex = serveStatic({ root: webDistDir, path: 'index.html' });
+    const serveWebAsset = serveStatic({ root: webDistDir });
+
     app.use('*', cors());
     app.use('*', async (c, next) => {
       const startedAt = Date.now();
@@ -112,9 +120,6 @@ export class HubServer {
       await next();
     });
 
-    app.get('/', (c) => c.html(webPage()));
-    app.get('/assets/web.css', (c) => c.text(webStyles(), 200, { 'Content-Type': 'text/css; charset=utf-8' }));
-    app.get('/assets/web.js', (c) => c.text(webScript(), 200, { 'Content-Type': 'application/javascript; charset=utf-8' }));
     app.post('/api/auth', (c) => {
       c.header('Set-Cookie', authCookie(this.config.server.accessToken, isSecureCookie(this.config.server.publicUrl)));
       return c.json({ ok: true });
@@ -308,8 +313,26 @@ export class HubServer {
       });
     });
 
+    app.get('/', serveWebIndex);
+    app.get('/assets/*', serveWebAsset);
+    app.get('*', async (c, next) => {
+      if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/assets/') || c.req.method !== 'GET' || !acceptsHtml(c.req.header('accept'))) {
+        await next();
+        return;
+      }
+      return serveWebIndex(c, next);
+    });
+
     return app;
   }
+}
+
+function defaultWebDistDir(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../../dist/web');
+}
+
+function acceptsHtml(accept: string | undefined): boolean {
+  return Boolean(accept?.includes('text/html'));
 }
 
 function isAuthorizedRequest(authorization: string | undefined, cookie: string | undefined, token: string): boolean {

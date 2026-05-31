@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { Hono } from 'hono';
@@ -13,6 +13,7 @@ import { Store } from '../src/store/store.js';
 
 export type TestHub = {
   dbPath: string;
+  webDistDir: string;
   store: Store;
   config: AppConfig;
   events: EventBus;
@@ -26,23 +27,25 @@ export type TestApp = TestHub & {
 
 export function createTestHub(): TestHub {
   const dbPath = tempDbPath();
+  const webDistDir = tempWebDistDir();
   const store = new Store(dbPath);
   const config = createConfig(dbPath);
   const events = new EventBus(store);
   const permissions = new PermissionService(store, events, config);
   const hub = new ControlHub(config, store, events, permissions);
-  return { dbPath, store, config, events, permissions, hub };
+  return { dbPath, webDistDir, store, config, events, permissions, hub };
 }
 
 export function createTestApp(): TestApp {
   const context = createTestHub();
-  return { ...context, app: new HubServer(context.hub, context.config).createApp() };
+  return { ...context, app: new HubServer(context.hub, context.config, { webDistDir: context.webDistDir }).createApp() };
 }
 
 export async function closeTestHub(context: TestHub): Promise<void> {
   await context.hub.shutdown();
   context.store.close();
   cleanupDb(context.dbPath);
+  cleanupDir(context.webDistDir);
 }
 
 export function withStore(fn: (store: Store) => void): void {
@@ -197,5 +200,30 @@ export function tempDbPath(): string {
 }
 
 export function cleanupDb(dbPath: string): void {
-  rmSync(dirname(dbPath), { recursive: true, force: true });
+  cleanupDir(dirname(dbPath));
+}
+
+function tempWebDistDir(): string {
+  const webDistDir = mkdtempSync(join(tmpdir(), 'cx-tg-web-'));
+  mkdirSync(join(webDistDir, 'assets'), { recursive: true });
+  writeFileSync(join(webDistDir, 'index.html'), [
+    '<!doctype html>',
+    '<html lang="en">',
+    '<head>',
+    '  <meta charset="utf-8">',
+    '  <title>CX TG</title>',
+    '  <link rel="stylesheet" href="/assets/main.css">',
+    '  <script type="module" src="/assets/main.js"></script>',
+    '</head>',
+    '<body><div id="app">CX TG</div></body>',
+    '</html>',
+    '',
+  ].join('\n'));
+  writeFileSync(join(webDistDir, 'assets/main.css'), '.shell { height: 100vh; }\n');
+  writeFileSync(join(webDistDir, 'assets/main.js'), 'new EventSource("/api/events", { withCredentials: true });\n');
+  return webDistDir;
+}
+
+function cleanupDir(path: string): void {
+  rmSync(path, { recursive: true, force: true });
 }

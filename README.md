@@ -21,6 +21,16 @@ pnpm build
 ```
 
 The project requires Node.js 25 or newer because it uses `node:sqlite`.
+`pnpm build` runs the Vite Web build into `dist/web` and the Node server build into `dist`.
+
+Development commands:
+
+```bash
+pnpm dev:hub
+pnpm dev:web
+```
+
+`pnpm dev:web` serves the Vite + Shoelace Web app on `0.0.0.0` and proxies `/api` to the local Hub at `127.0.0.1:3030`.
 
 ## Start
 
@@ -58,6 +68,7 @@ http://127.0.0.1:3030/?token=<access-token>
 ```
 
 The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
+The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
 
 The Web console can:
 

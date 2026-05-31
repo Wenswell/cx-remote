@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CX TG</title>
+  <script type="module" src="/main.ts"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side stack">
+      <div>
+        <div class="title">CX TG</div>
+        <div class="muted" id="status">Loading</div>
+      </div>
+      <div class="row">
+        <sl-button id="refresh" type="button" size="small">
+          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+          Refresh
+        </sl-button>
+      </div>
+      <div id="sessions" class="stack"></div>
+      <form id="new-session" class="stack">
+        <strong>New session</strong>
+        <sl-select id="workspace-root" size="small"></sl-select>
+        <div class="row">
+          <sl-button id="root-dir" type="button" size="small">
+            <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
+            Root
+          </sl-button>
+          <sl-input id="cwd" name="cwd" placeholder="cwd" required size="small"></sl-input>
+        </div>
+        <div id="dirs" class="dir-list"></div>
+        <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
+        <sl-button variant="primary" type="submit">
+          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+          Create
+        </sl-button>
+      </form>
+      <div id="prompt-queue" class="stack"></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="title" id="session-title">No session</div>
+          <div class="details" id="session-meta"></div>
+          <div class="details" id="session-detail"></div>
+        </div>
+        <div class="row">
+          <sl-button id="claim" type="button" size="small" title="Take exclusive control for this browser">
+            <sl-icon slot="prefix" library="system" name="person-fill"></sl-icon>
+            Take control
+          </sl-button>
+          <sl-button id="release" type="button" size="small" title="Release this browser's exclusive control">
+            <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
+            Release control
+          </sl-button>
+          <sl-button id="rename" type="button" size="small" title="Edit the session title">
+            <sl-icon slot="prefix" library="system" name="copy"></sl-icon>
+            Edit title
+          </sl-button>
+          <sl-button id="stop" type="button" size="small" variant="warning" title="Cancel the running turn and queued prompts">
+            <sl-icon slot="prefix" library="system" name="x-circle-fill"></sl-icon>
+            Cancel
+          </sl-button>
+          <sl-button id="delete" type="button" size="small" variant="danger" title="Delete this local session and its history">
+            <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
+            Delete session
+          </sl-button>
+        </div>
+      </header>
+      <section class="approvals">
+        <div id="pending-approvals" class="stack"></div>
+        <sl-details summary="Approval history">
+          <div id="approval-history" class="stack"></div>
+        </sl-details>
+      </section>
+      <section class="messages" id="messages"></section>
+      <form id="composer" class="composer">
+        <sl-textarea id="composer-text" name="text" placeholder="Message Codex" required resize="auto"></sl-textarea>
+        <div class="row">
+          <sl-button variant="primary" type="submit">
+            <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+            Send
+          </sl-button>
+          <span class="muted" id="send-state"></span>
+        </div>
+      </form>
+    </main>
+  </div>
+  <sl-alert id="error-alert" variant="danger" closable duration="5000">
+    <sl-icon slot="icon" library="system" name="x-circle-fill"></sl-icon>
+    <span id="error-message"></span>
+  </sl-alert>
+  <sl-dialog id="delete-dialog" label="Delete session">
+    <div id="delete-dialog-message">Delete this session?</div>
+    <sl-button slot="footer" id="delete-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="delete-confirm" type="button" variant="danger">Delete session</sl-button>
+  </sl-dialog>
+</body>
+</html>

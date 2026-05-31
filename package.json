@@ -8,16 +8,21 @@
     "cc-hub": "./dist/main.js"
   },
   "scripts": {
-    "dev": "tsx src/main.ts hub",
-    "build": "tsc -p tsconfig.json",
+    "dev": "pnpm dev:hub",
+    "dev:hub": "tsx src/main.ts hub",
+    "dev:web": "vite --host 0.0.0.0",
+    "build": "pnpm build:web && pnpm build:server",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build:web": "vite build",
     "start": "node dist/main.js hub",
     "test": "node --import tsx --test test/**/*.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",
     "@hono/node-server": "^2.0.4",
+    "@shoelace-style/shoelace": "^2.20.1",
     "grammy": "^1.42.0",
     "hono": "^4.12.23",
     "zod": "^4.4.3"
@@ -25,7 +30,8 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.14"
   },
   "engines": {
     "node": ">=25.0.0"

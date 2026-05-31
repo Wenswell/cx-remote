@@ -84,7 +84,7 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 | `log.console` | boolean | `LOG_CONSOLE` | yes |
 | `log.prompts` | boolean | `LOG_PROMPTS` | no |
 
-`web.enabled` and `cli.enabled` are visible in `config list` as read-only fields until runtime startup policy consumes them.
+`web.enabled` and `cli.enabled` are visible in `config list` as read-only fields until runtime startup policy consumes them. The Web app is built by Vite into `dist/web`; Hub serving is controlled by the `server.*` settings.
 
 ## Example
 

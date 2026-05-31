@@ -28,7 +28,7 @@ src/store/        SQLite persistence
 src/runtime/      ControlHub, event bus, permission service
 src/agents/codex/ Codex app-server JSON-RPC runtime
 src/hub/          HTTP API and SSE
-src/web/          built-in browser console
+src/web/          Vite + Shoelace browser console
 src/controls/     Telegram control adapter
 src/cli.ts        terminal CLI client
 ```
@@ -83,6 +83,8 @@ Auto approval is intentionally narrow:
 Pending approvals are expired when their Codex turn can no longer continue, including Hub restart recovery, explicit interrupt, and shutdown. Resolving an already resolved or expired approval returns the stored result.
 
 ## HTTP API
+
+The Hub serves API/SSE routes and the built Web app. Vite writes the browser bundle to `dist/web`; Hono serves `/`, `/assets/*`, and HTML page fallbacks from that directory. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
 
 The Hub API uses bearer auth and JSON errors:
 
