@@ -70,6 +70,7 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 | `codex.approvalPolicy` | enum | `CODEX_APPROVAL_POLICY` | no |
 | `codex.sandbox` | enum | `CODEX_SANDBOX` | no |
 | `codex.search` | boolean | `CODEX_SEARCH` | no |
+| `codex.bypassApprovalsAndSandbox` | boolean | `CODEX_BYPASS_APPROVALS_AND_SANDBOX` | no |
 | `telegram.enabled` | boolean | `TG_ENABLED` | yes |
 | `telegram.botToken` | string | `TG_BOT_TOKEN` | yes |
 | `telegram.allowedUsers` | string[] | `TG_ALLOWED_USERS` | yes |
@@ -107,7 +108,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
       "reasoningEffort": "",
       "approvalPolicy": "on-request",
       "sandbox": "workspace-write",
-      "search": false
+      "search": false,
+      "bypassApprovalsAndSandbox": false
     }
   },
   "controls": {
@@ -157,3 +159,17 @@ PATCH /api/settings
 ```
 
 The response includes `restartRequired` for fields that require a Hub restart.
+
+## Session Runtime
+
+`codex.*` settings are defaults for new Hub sessions. Each session stores its own runtime config snapshot, so later default changes do not rewrite existing Hub sessions.
+
+Use per-session flags for one session:
+
+```bash
+cx-tg new --cwd <path> --search
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --search --dangerously-bypass-approvals-and-sandbox
+cx-tg session-config <session-id> --sandbox danger-full-access --approval-policy never
+```
+
+When `bypassApprovalsAndSandbox` is true, validation stores `approvalPolicy=never` and `sandbox=danger-full-access`.

@@ -8,8 +8,8 @@ Native Codex threads become visible in `cx-tg` after adoption. Adoption creates 
 
 ```text
 Create managed session
-  POST /api/sessions
-  cx-tg new --cwd <path>
+  POST /api/sessions { cwd, config? }
+  cx-tg new --cwd <path> [runtime flags]
       │
       ▼
   Hub Session with empty codexThreadId
@@ -20,8 +20,8 @@ Create managed session
 
 ```text
 Adopt Codex thread
-  POST /api/sessions/adopt
-  cx-tg adopt --thread <thread-id> --cwd <path>
+  POST /api/sessions/adopt { threadId, cwd, config? }
+  cx-tg adopt --thread <thread-id> --cwd <path> [runtime flags]
       │
       ▼
   Hub Session with codexThreadId
@@ -39,4 +39,6 @@ Adopt Codex thread
 - `codexThreadId` is unique inside the Hub store. One Codex thread maps to one Hub session.
 - Adoption registers an existing Codex thread under Hub control. Hub history starts at adoption; previous native Codex transcript remains in Codex storage.
 - Runtime startup resumes an adopted or previously persisted Codex thread before starting the next turn.
+- Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-tg session-config`.
+- `--dangerously-bypass-approvals-and-sandbox` maps to `bypassApprovalsAndSandbox=true`, `approvalPolicy=never`, and `sandbox=danger-full-access`.
 - Deleting a Hub session removes Hub messages, queue, approvals, and events. It leaves the native Codex thread in Codex storage.

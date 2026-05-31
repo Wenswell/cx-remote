@@ -100,8 +100,9 @@ cx-tg status
 cx-tg sessions
 cx-tg session <session-id>
 cx-tg messages <session-id>
-cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
-cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg
+cx-tg new --cwd /home/ilove/Documents/repos/cx-tg --search
+cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg --search
+cx-tg session-config <session-id> --search --dangerously-bypass-approvals-and-sandbox
 cx-tg send <session-id> "check git status"
 cx-tg attach <session-id>
 cx-tg attach <session-id> --claim
@@ -116,6 +117,17 @@ cx-tg doctor
 `cc-hub` is kept as an alias for the same binary.
 
 `cx-tg adopt` creates a Hub session that points to an existing Codex thread. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+
+`cx-tg` maps native Codex runtime flags onto Hub session config:
+
+```bash
+cx-tg new --cwd <path> --search
+cx-tg new --cwd <path> --search --dangerously-bypass-approvals-and-sandbox
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --search --dangerously-bypass-approvals-and-sandbox
+cx-tg session-config <session-id> --search --dangerously-bypass-approvals-and-sandbox
+```
+
+The dangerous bypass flag stores `approvalPolicy=never`, `sandbox=danger-full-access`, and `bypassApprovalsAndSandbox=true` on the Hub session. Existing sessions can be updated while idle; queued or running sessions reject config updates.
 
 ## Telegram
 
@@ -189,6 +201,7 @@ CODEX_REASONING_EFFORT
 CODEX_APPROVAL_POLICY
 CODEX_SANDBOX
 CODEX_SEARCH
+CODEX_BYPASS_APPROVALS_AND_SANDBOX
 TG_ENABLED
 TG_BOT_TOKEN
 TG_ALLOWED_USERS

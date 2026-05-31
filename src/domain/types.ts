@@ -23,6 +23,8 @@ export interface CodexSessionConfig {
   bypassApprovalsAndSandbox: boolean;
 }
 
+export type CodexSessionConfigPatch = Partial<CodexSessionConfig>;
+
 export interface Session {
   id: string;
   title: string;

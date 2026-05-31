@@ -17,8 +17,11 @@ type JsonObject = Record<string, unknown>;
 
 type SessionConfig = {
   model?: string;
+  reasoningEffort?: string;
   sandbox?: string;
   approvalPolicy?: string;
+  search?: boolean;
+  bypassApprovalsAndSandbox?: boolean;
 };
 
 type Session = {
@@ -90,6 +93,7 @@ type SessionDetail = {
 type StatusResponse = {
   homePath: string;
   eventCursor: number;
+  codexDefaults: SessionConfig;
   stats: {
     sessions: number;
     pendingApprovals: number;
@@ -109,6 +113,10 @@ type ApiOptions = Omit<RequestInit, 'headers'> & {
 
 type ValueElement = HTMLElement & {
   value: string;
+};
+
+type ConfigValueElement = ValueElement & {
+  disabled: boolean;
 };
 
 type ButtonElement = HTMLElement & {
@@ -176,6 +184,7 @@ let approvalHistory: Approval[] = [];
 let promptQueue: PromptJob[] = [];
 let workspaces: Workspace[] = [];
 let currentSession: Session | null = null;
+let codexDefaults: SessionConfig = {};
 let currentRoot = localStorage.getItem('cx_tg_root') || '';
 let currentPath = '';
 let homePath = '';
@@ -257,6 +266,9 @@ async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
 async function loadAll(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
   homePath = status.homePath;
+  codexDefaults = status.codexDefaults || {};
+  setRuntimeControls('new', codexDefaults);
+  setRuntimeControls('adopt', codexDefaults);
   rememberNotificationEventCursor(status.eventCursor);
   element('status').textContent = `${status.stats.sessions} managed sessions · ${status.stats.pendingApprovals} approvals · ${status.stats.queuedPrompts} queued`;
   await loadWorkspaces();
@@ -407,8 +419,10 @@ function renderSessionHeader(): void {
     ['status', currentSession.status],
     ['control', currentSession.controlLabel || 'shared'],
     ['model', config.model || '-'],
+    ['search', config.search ? 'on' : 'off'],
     ['sandbox', config.sandbox || '-'],
     ['approval', config.approvalPolicy || '-'],
+    ['bypass', config.bypassApprovalsAndSandbox ? 'on' : 'off'],
   ].forEach(([label, value]) => chips.appendChild(metaChip(label, value)));
   detail.appendChild(chips);
 
@@ -444,9 +458,11 @@ function renderActionState(): void {
   const hasSession = Boolean(currentSession);
   const isControlledByMe = currentSession?.controlOwnerId === clientId;
   const isControlledByOther = Boolean(currentSession?.controlOwnerId && !isControlledByMe);
-  const hasActiveWork = Boolean(currentSession && currentSession.status !== 'idle') || promptQueue.length > 0;
+  const isRunning = currentSession?.status === 'running' || currentSession?.status === 'waiting_approval';
+  const hasActiveWork = Boolean(isRunning) || promptQueue.length > 0;
 
   element<ButtonElement>('rename').disabled = !hasSession;
+  element<ButtonElement>('runtime').disabled = !hasSession || hasActiveWork;
   element<ButtonElement>('delete').disabled = !hasSession;
   const notify = element<ToggleElement>('notify');
   notify.hidden = !hasSession;
@@ -836,6 +852,59 @@ function submitButton(form: HTMLFormElement): HTMLElement {
   return form.querySelector('sl-button[type="submit"]') as HTMLElement || form;
 }
 
+function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: SessionConfig): void {
+  element<ToggleElement>(`${prefix}-search`).checked = config.search === true;
+  element<ToggleElement>(`${prefix}-bypass`).checked = config.bypassApprovalsAndSandbox === true;
+  element<ConfigValueElement>(`${prefix}-sandbox`).value = config.sandbox || 'workspace-write';
+  element<ConfigValueElement>(`${prefix}-approval-policy`).value = config.approvalPolicy || 'on-request';
+  const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
+  const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
+  if (model) model.value = config.model || '';
+  if (reasoningEffort) reasoningEffort.value = config.reasoningEffort || '';
+  syncRuntimeBypass(prefix);
+}
+
+function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): SessionConfig {
+  const config: SessionConfig = {
+    search: element<ToggleElement>(`${prefix}-search`).checked,
+    bypassApprovalsAndSandbox: element<ToggleElement>(`${prefix}-bypass`).checked,
+    sandbox: element<ConfigValueElement>(`${prefix}-sandbox`).value,
+    approvalPolicy: element<ConfigValueElement>(`${prefix}-approval-policy`).value,
+  };
+  const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
+  const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
+  if (model) config.model = model.value.trim();
+  if (reasoningEffort) config.reasoningEffort = reasoningEffort.value.trim();
+  return config;
+}
+
+function syncRuntimeBypass(prefix: 'new' | 'adopt' | 'runtime'): void {
+  const bypass = element<ToggleElement>(`${prefix}-bypass`).checked;
+  const sandbox = element<ConfigValueElement>(`${prefix}-sandbox`);
+  const approvalPolicy = element<ConfigValueElement>(`${prefix}-approval-policy`);
+  if (bypass) {
+    sandbox.value = 'danger-full-access';
+    approvalPolicy.value = 'never';
+  }
+  sandbox.disabled = bypass;
+  approvalPolicy.disabled = bypass;
+}
+
+function openRuntimeDialog(session: Session): void {
+  setRuntimeControls('runtime', session.config || {});
+  run(element<DialogElement>('runtime-dialog').show());
+}
+
+async function saveRuntimeConfig(): Promise<void> {
+  if (!currentSession) return;
+  await api(apiPath.session(currentSession.id, '/config'), {
+    method: 'PATCH',
+    body: JSON.stringify({ config: runtimeConfigFromControls('runtime') }),
+  });
+  await element<DialogElement>('runtime-dialog').hide();
+  await loadAll();
+}
+
 element<ValueElement>('workspace-root').addEventListener('sl-change', (event) => {
   currentRoot = (event.currentTarget as ValueElement).value;
   currentPath = '';
@@ -844,6 +913,9 @@ element<ValueElement>('workspace-root').addEventListener('sl-change', (event) =>
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
 element('refresh').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, loadAll));
+element<ToggleElement>('new-bypass').addEventListener('sl-change', () => syncRuntimeBypass('new'));
+element<ToggleElement>('adopt-bypass').addEventListener('sl-change', () => syncRuntimeBypass('adopt'));
+element<ToggleElement>('runtime-bypass').addEventListener('sl-change', () => syncRuntimeBypass('runtime'));
 element('claim').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, '/control'), {
@@ -872,6 +944,9 @@ element('rename').addEventListener('click', (event) => runAction(event.currentTa
   });
   await loadAll();
 }));
+element('runtime').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => {
+  if (currentSession) openRuntimeDialog(currentSession);
+}));
 element('delete').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => {
   if (currentSession) showDeleteDialog(currentSession);
 }));
@@ -879,6 +954,8 @@ element<ToggleElement>('notify').addEventListener('sl-change', (event) => runAct
   await updateSessionNotifications((event.currentTarget as ToggleElement).checked);
 }));
 element('delete-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => element<DialogElement>('delete-dialog').hide()));
+element('runtime-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => element<DialogElement>('runtime-dialog').hide()));
+element('runtime-save').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, saveRuntimeConfig));
 element('delete-confirm').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!pendingDeleteSessionId) return;
   await api(apiPath.session(pendingDeleteSessionId), { method: 'DELETE' });
@@ -896,7 +973,7 @@ element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
     const title = element<ValueElement>('new-title').value.trim();
     const session = await api<Session>(apiPath.sessions, {
       method: 'POST',
-      body: JSON.stringify({ cwd, title }),
+      body: JSON.stringify({ cwd, title, config: runtimeConfigFromControls('new') }),
     });
     activeSessionId = session.id;
     localStorage.setItem('cx_tg_session', activeSessionId);
@@ -913,7 +990,7 @@ element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => 
     const title = element<ValueElement>('adopt-title').value.trim();
     const session = await api<Session>(apiPath.adoptSession, {
       method: 'POST',
-      body: JSON.stringify({ threadId, cwd, title }),
+      body: JSON.stringify({ threadId, cwd, title, config: runtimeConfigFromControls('adopt') }),
     });
     activeSessionId = session.id;
     localStorage.setItem('cx_tg_session', activeSessionId);

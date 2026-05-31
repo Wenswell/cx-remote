@@ -187,6 +187,85 @@ test('session adopt API creates a Hub-managed session for an existing Codex thre
   }
 });
 
+test('session create API stores runtime config overrides', async () => {
+  const context = createTestApp();
+
+  try {
+    const response = await context.app.request('/api/sessions', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        cwd: process.cwd(),
+        title: 'Search session',
+        config: {
+          search: true,
+          sandbox: 'read-only',
+          approvalPolicy: 'on-request',
+        },
+      }),
+    });
+    const session = await json<{
+      title: string;
+      config: { search: boolean; sandbox: string; approvalPolicy: string; bypassApprovalsAndSandbox: boolean };
+    }>(response);
+
+    assert.equal(response.status, 201);
+    assert.equal(session.title, 'Search session');
+    assert.equal(session.config.search, true);
+    assert.equal(session.config.sandbox, 'read-only');
+    assert.equal(session.config.approvalPolicy, 'on-request');
+    assert.equal(session.config.bypassApprovalsAndSandbox, false);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session config API updates idle session runtime flags', async () => {
+  const context = createTestApp();
+
+  try {
+    const session = createSession(context.store);
+    const response = await context.app.request(`/api/sessions/${encodeURIComponent(session.id)}/config`, {
+      method: 'PATCH',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        config: {
+          search: true,
+          bypassApprovalsAndSandbox: true,
+        },
+      }),
+    });
+    const updated = await json<{
+      config: { search: boolean; sandbox: string; approvalPolicy: string; bypassApprovalsAndSandbox: boolean };
+    }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(updated.config.search, true);
+    assert.equal(updated.config.bypassApprovalsAndSandbox, true);
+    assert.equal(updated.config.sandbox, 'danger-full-access');
+    assert.equal(updated.config.approvalPolicy, 'never');
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session config API rejects active sessions', async () => {
+  const context = createTestApp();
+
+  try {
+    const session = createSession(context.store, 'session-1', 'running');
+    const response = await context.app.request(`/api/sessions/${encodeURIComponent(session.id)}/config`, {
+      method: 'PATCH',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({ config: { search: true } }),
+    });
+
+    assert.equal(response.status, 409);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
 test('session adopt API rejects duplicate Codex threads', async () => {
   const context = createTestApp();
 
@@ -289,13 +368,15 @@ test('status exposes browser bootstrap metadata', async () => {
     const session = createSession(context.store);
     const event = context.store.addEvent({ type: 'session.updated', sessionId: session.id, payload: { marker: 'status' }, createdAt: 10 });
 
-    const status = await json<{ homePath: string; eventCursor: number }>(await context.app.request(
+    const status = await json<{ homePath: string; eventCursor: number; codexDefaults: { sandbox: string; search: boolean } }>(await context.app.request(
       '/api/status',
       { headers: authHeaders(context.config) },
     ));
 
     assert.equal(status.homePath, homedir());
     assert.equal(status.eventCursor, event.id);
+    assert.equal(status.codexDefaults.sandbox, 'workspace-write');
+    assert.equal(status.codexDefaults.search, false);
   } finally {
     await closeTestHub(context);
   }

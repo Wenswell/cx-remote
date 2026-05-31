@@ -114,6 +114,7 @@ export function createConfig(dbPath: string): AppConfig {
         approvalPolicy: 'on-request',
         sandbox: 'workspace-write',
         search: false,
+        bypassApprovalsAndSandbox: false,
       },
     },
     controls: {

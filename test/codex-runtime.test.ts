@@ -65,7 +65,43 @@ test('CodexRuntime starts a new thread when no thread id is stored', async () =>
   }
 });
 
-function sessionFixture(codexThreadId: string | null): Session {
+test('CodexRuntime forwards search and dangerous bypass config', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
+  const fake = createFakeCodexBin(tempDir);
+  const runtime = new CodexRuntime({
+    bin: fake.bin,
+    session: sessionFixture(null, {
+      approvalPolicy: 'never',
+      sandbox: 'danger-full-access',
+      search: true,
+      bypassApprovalsAndSandbox: true,
+    }),
+    onEvent: () => {},
+    onThread: () => {},
+    onTurn: () => {},
+    onApproval: async () => ({ decision: 'denied' }),
+    onChoice: async () => ({ decision: 'cancel' }),
+  });
+
+  try {
+    await runtime.sendPrompt('hello');
+    const entries = readRpcLog(fake.logPath);
+    const argv = entries.find((entry) => entry.method === '__argv')?.params as string[] | undefined;
+    const threadStart = entries.find((entry) => entry.method === 'thread/start')?.params as { sandbox?: string; approvalPolicy?: string } | undefined;
+    const turnStart = entries.find((entry) => entry.method === 'turn/start')?.params as { sandboxPolicy?: { type?: string }; approvalPolicy?: string } | undefined;
+
+    assert.deepEqual(argv, ['--search', '--dangerously-bypass-approvals-and-sandbox', 'app-server']);
+    assert.equal(threadStart?.sandbox, 'danger-full-access');
+    assert.equal(threadStart?.approvalPolicy, 'never');
+    assert.equal(turnStart?.sandboxPolicy?.type, 'dangerFullAccess');
+    assert.equal(turnStart?.approvalPolicy, 'never');
+  } finally {
+    await runtime.stop().catch(() => {});
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+function sessionFixture(codexThreadId: string | null, config: Partial<Session['config']> = {}): Session {
   const now = Date.now();
   return {
     id: 'session-1',
@@ -85,6 +121,7 @@ function sessionFixture(codexThreadId: string | null): Session {
       sandbox: 'workspace-write',
       search: false,
       bypassApprovalsAndSandbox: false,
+      ...config,
     },
     createdAt: now,
     updatedAt: now,
@@ -100,6 +137,7 @@ const fs = require('node:fs');
 const readline = require('node:readline');
 const logPath = ${JSON.stringify(logPath)};
 const lines = readline.createInterface({ input: process.stdin });
+fs.appendFileSync(logPath, JSON.stringify({ method: '__argv', params: process.argv.slice(2) }) + '\\n');
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + '\\n');
@@ -139,10 +177,14 @@ lines.on('line', (line) => {
 }
 
 function readRpcMethods(path: string): string[] {
+  return readRpcLog(path)
+    .map((entry) => entry.method);
+}
+
+function readRpcLog(path: string): Array<{ method: string; params?: unknown }> {
   return readFileSync(path, 'utf8')
     .trim()
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { method: string })
-    .map((entry) => entry.method);
+    .map((line) => JSON.parse(line) as { method: string; params?: unknown });
 }

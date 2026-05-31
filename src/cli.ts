@@ -8,6 +8,7 @@ import { runDoctor } from './cli/doctor.js';
 import { runConfigCommand } from './cli/config.js';
 import { decodeSseFrame } from './runtime/sse.js';
 import { CLI_CONTROL_TTL_MS, cliControlIdentity } from './controls/control-actions.js';
+import type { CodexSessionConfigPatch } from './domain/types.js';
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
@@ -83,17 +84,17 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     }
     case 'new': {
       const cwd = valueAfter(argv, '--cwd') ?? argv[1];
-      if (!cwd) throw new Error('Usage: cx-tg new --cwd <path> [--title <title>]');
+      if (!cwd) throw new Error('Usage: cx-tg new --cwd <path> [--title <title>] [runtime flags]');
       const title = valueAfter(argv, '--title');
-      console.log(JSON.stringify(await client.post('/api/sessions', { cwd, title }), null, 2));
+      console.log(JSON.stringify(await client.post('/api/sessions', { cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
       return;
     }
     case 'adopt': {
       const threadId = valueAfter(argv, '--thread') ?? positionalValue(argv);
       const cwd = valueAfter(argv, '--cwd');
-      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>]');
+      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>] [runtime flags]');
       const title = valueAfter(argv, '--title');
-      console.log(JSON.stringify(await client.post('/api/sessions/adopt', { threadId, cwd, title }), null, 2));
+      console.log(JSON.stringify(await client.post('/api/sessions/adopt', { threadId, cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
       return;
     }
     case 'send': {
@@ -120,6 +121,13 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       const title = argv.slice(2).join(' ').trim();
       if (!sessionId || !title) throw new Error('Usage: cx-tg rename <session-id> <title>');
       console.log(JSON.stringify(await client.patch(`/api/sessions/${encodeURIComponent(sessionId)}`, { title }), null, 2));
+      return;
+    }
+    case 'session-config': {
+      const sessionId = argv[1];
+      const config = sessionConfigFromArgs(argv);
+      if (!sessionId || !config) throw new Error('Usage: cx-tg session-config <session-id> [runtime flags]');
+      console.log(JSON.stringify(await client.patch(`/api/sessions/${encodeURIComponent(sessionId)}/config`, { config }), null, 2));
       return;
     }
     case 'delete': {
@@ -256,6 +264,25 @@ function hasFlag(argv: string[], name: string): boolean {
 function positionalValue(argv: string[]): string | undefined {
   const value = argv[1];
   return value && !value.startsWith('--') ? value : undefined;
+}
+
+function sessionConfigFromArgs(argv: string[]): CodexSessionConfigPatch | undefined {
+  const config: CodexSessionConfigPatch = {};
+  const model = valueAfter(argv, '--model');
+  const reasoningEffort = valueAfter(argv, '--reasoning-effort');
+  const sandbox = valueAfter(argv, '--sandbox');
+  const approvalPolicy = valueAfter(argv, '--approval-policy') ?? valueAfter(argv, '--ask-for-approval');
+
+  if (model !== undefined) config.model = model;
+  if (reasoningEffort !== undefined) config.reasoningEffort = reasoningEffort;
+  if (sandbox !== undefined) config.sandbox = sandbox as CodexSessionConfigPatch['sandbox'];
+  if (approvalPolicy !== undefined) config.approvalPolicy = approvalPolicy as CodexSessionConfigPatch['approvalPolicy'];
+  if (hasFlag(argv, '--search')) config.search = true;
+  if (hasFlag(argv, '--no-search')) config.search = false;
+  if (hasFlag(argv, '--dangerously-bypass-approvals-and-sandbox')) config.bypassApprovalsAndSandbox = true;
+  if (hasFlag(argv, '--no-bypass')) config.bypassApprovalsAndSandbox = false;
+
+  return Object.keys(config).length ? config : undefined;
 }
 
 function queryString(params: Record<string, string | undefined>): string {
@@ -417,6 +444,14 @@ function formatSessionDetail(value: unknown): string {
       title: string;
       cwd: string;
       status: string;
+      config?: {
+        model?: string;
+        reasoningEffort?: string;
+        approvalPolicy?: string;
+        sandbox?: string;
+        search?: boolean;
+        bypassApprovalsAndSandbox?: boolean;
+      };
       codexThreadId: string | null;
       currentTurnId: string | null;
       controlLabel: string | null;
@@ -429,6 +464,7 @@ function formatSessionDetail(value: unknown): string {
   return [
     `Hub session: ${detail.session.id}\t${detail.session.status}\t${detail.session.title}`,
     `cwd: ${detail.session.cwd}`,
+    `runtime: ${formatSessionConfig(detail.session.config)}`,
     `Codex thread: ${detail.session.codexThreadId ?? '-'}`,
     `Codex turn: ${detail.session.currentTurnId ?? '-'}`,
     `control: ${detail.session.controlLabel ?? 'shared'}`,
@@ -437,6 +473,18 @@ function formatSessionDetail(value: unknown): string {
     `messages: ${detail.messages?.length ?? 0}`,
     `pendingApprovals: ${detail.approvals?.length ?? 0}`,
   ].join('\n');
+}
+
+function formatSessionConfig(config: { model?: string; reasoningEffort?: string; approvalPolicy?: string; sandbox?: string; search?: boolean; bypassApprovalsAndSandbox?: boolean } | undefined): string {
+  if (!config) return '-';
+  return [
+    `model=${config.model || '-'}`,
+    `effort=${config.reasoningEffort || '-'}`,
+    `approval=${config.approvalPolicy || '-'}`,
+    `sandbox=${config.sandbox || '-'}`,
+    `search=${config.search ? 'on' : 'off'}`,
+    `bypass=${config.bypassApprovalsAndSandbox ? 'on' : 'off'}`,
+  ].join(' ');
 }
 
 function formatMessages(value: unknown): string {
@@ -476,12 +524,15 @@ function printHelp(): void {
     '  cx-tg session <session-id>        Show Hub session detail',
     '  cx-tg messages <session-id>       Show Hub session messages',
     '  cx-tg new --cwd <path>            Create Hub-managed session',
+    '    [--search] [--dangerously-bypass-approvals-and-sandbox] [--sandbox <mode>] [--approval-policy <policy>]',
     '  cx-tg adopt --thread <id> --cwd <path> Adopt Codex thread',
+    '    [--search] [--dangerously-bypass-approvals-and-sandbox] [--sandbox <mode>] [--approval-policy <policy>]',
     '  cx-tg send <session-id> <text>    Send message',
     '  cx-tg attach <session-id>         Attach shared CLI to a session',
     '  cx-tg attach <session-id> --claim Attach with exclusive control',
     '  cx-tg stop <session-id>           Stop session',
     '  cx-tg rename <session-id> <title> Rename session',
+    '  cx-tg session-config <session-id> Update idle session runtime flags',
     '  cx-tg delete <session-id>         Delete Hub session',
     '  cx-tg approvals [--all]           List approvals',
     '  cx-tg approve <approval-id>       Resolve approval',

@@ -29,6 +29,7 @@ export const settingsSchema = z.object({
       approvalPolicy: approvalPolicySchema.default('on-request'),
       sandbox: sandboxSchema.default('workspace-write'),
       search: z.boolean().default(false),
+      bypassApprovalsAndSandbox: z.boolean().default(false),
     }),
   }),
   controls: z.object({
@@ -184,7 +185,7 @@ export function patchSettings(patch: ConfigPatch): Settings {
 }
 
 export function validateSettings(input: unknown): Settings {
-  const settings = settingsSchema.parse(input) as Settings;
+  const settings = normalizeCodexSettings(settingsSchema.parse(input) as Settings);
   validateTelegram(settings);
   return settings;
 }
@@ -247,6 +248,7 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
         approvalPolicy: 'on-request',
         sandbox: 'workspace-write',
         search: false,
+        bypassApprovalsAndSandbox: false,
       },
     },
     controls: {
@@ -317,6 +319,7 @@ function applyEnv(raw: unknown): unknown {
   setEnvPath(next, ['agents', 'codex', 'approvalPolicy'], process.env.CODEX_APPROVAL_POLICY as ApprovalPolicy | undefined);
   setEnvPath(next, ['agents', 'codex', 'sandbox'], process.env.CODEX_SANDBOX as SandboxMode | undefined);
   setEnvPath(next, ['agents', 'codex', 'search'], boolEnv(process.env.CODEX_SEARCH));
+  setEnvPath(next, ['agents', 'codex', 'bypassApprovalsAndSandbox'], boolEnv(process.env.CODEX_BYPASS_APPROVALS_AND_SANDBOX));
   setEnvPath(next, ['controls', 'telegram', 'enabled'], boolEnv(process.env.TG_ENABLED));
   setEnvPath(next, ['controls', 'telegram', 'botToken'], process.env.TG_BOT_TOKEN);
   setEnvPath(next, ['controls', 'telegram', 'allowedUsers'], listEnv(process.env.TG_ALLOWED_USERS));
@@ -412,4 +415,19 @@ function validateTelegram(config: Settings): void {
   if (config.controls.telegram.enabled && !config.controls.telegram.botToken) {
     throw new Error('controls.telegram.botToken is required when Telegram is enabled');
   }
+}
+
+function normalizeCodexSettings(settings: Settings): Settings {
+  if (!settings.agents.codex.bypassApprovalsAndSandbox) return settings;
+  return {
+    ...settings,
+    agents: {
+      ...settings.agents,
+      codex: {
+        ...settings.agents.codex,
+        approvalPolicy: 'never',
+        sandbox: 'danger-full-access',
+      },
+    },
+  };
 }

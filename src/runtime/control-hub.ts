@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { Approval, CodexEvent, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session, SessionDetail } from '../domain/types.js';
+import type { Approval, ApprovalPolicy, CodexEvent, CodexSessionConfig, CodexSessionConfigPatch, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, SandboxMode, Session, SessionDetail } from '../domain/types.js';
 import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
@@ -56,7 +56,7 @@ export class ControlHub {
     cwd: string;
     title?: string;
     bind?: { controlType: ControlType; externalId: string };
-    bypassApprovalsAndSandbox?: boolean;
+    config?: CodexSessionConfigPatch;
   }): Session {
     return this.createSessionRecord({ ...input, codexThreadId: null });
   }
@@ -66,7 +66,7 @@ export class ControlHub {
     cwd: string;
     title?: string;
     bind?: { controlType: ControlType; externalId: string };
-    bypassApprovalsAndSandbox?: boolean;
+    config?: CodexSessionConfigPatch;
   }): Session {
     const threadId = input.threadId.trim();
     if (!threadId) throw new Error('Codex thread id is required');
@@ -82,7 +82,7 @@ export class ControlHub {
     codexThreadId: string | null;
     title?: string;
     bind?: { controlType: ControlType; externalId: string };
-    bypassApprovalsAndSandbox?: boolean;
+    config?: CodexSessionConfigPatch;
   }): Session {
     const cwd = resolveWorkspacePath(this.config, input.cwd);
     if (!existsSync(cwd)) throw new Error(`Path does not exist: ${cwd}`);
@@ -102,14 +102,10 @@ export class ControlHub {
       controlLabel: null,
       controlLeaseExpiresAt: null,
       controlUpdatedAt: null,
-      config: {
-        model: emptyToUndefined(this.config.agents.codex.model),
-        reasoningEffort: emptyToUndefined(this.config.agents.codex.reasoningEffort),
-        approvalPolicy: this.config.agents.codex.approvalPolicy,
-        sandbox: this.config.agents.codex.sandbox,
-        search: this.config.agents.codex.search,
-        bypassApprovalsAndSandbox: input.bypassApprovalsAndSandbox ?? false,
-      },
+      config: normalizeSessionConfig({
+        ...this.defaultSessionConfig(),
+        ...normalizeConfigPatch(input.config),
+      }),
       createdAt: now,
       updatedAt: now,
       lastError: null,
@@ -123,6 +119,17 @@ export class ControlHub {
 
     logger.info('session created', { sessionKey: session.id, cwd });
     return session;
+  }
+
+  defaultSessionConfig(): CodexSessionConfig {
+    return normalizeSessionConfig({
+      model: emptyToUndefined(this.config.agents.codex.model),
+      reasoningEffort: emptyToUndefined(this.config.agents.codex.reasoningEffort),
+      approvalPolicy: this.config.agents.codex.approvalPolicy,
+      sandbox: this.config.agents.codex.sandbox,
+      search: this.config.agents.codex.search,
+      bypassApprovalsAndSandbox: this.config.agents.codex.bypassApprovalsAndSandbox,
+    });
   }
 
   getSession(id: string): Session {
@@ -178,6 +185,25 @@ export class ControlHub {
     if (!session) throw new Error(`Session not found: ${sessionId}`);
     this.events.publish({ type: 'session.updated', sessionId, payload: { session } });
     return session;
+  }
+
+  async updateSessionConfig(sessionId: string, patch: CodexSessionConfigPatch): Promise<Session> {
+    const session = this.getSession(sessionId);
+    if (this.isBusy(session) || this.store.countPromptJobs(ACTIVE_PROMPT_JOB_STATUSES, sessionId) > 0) {
+      throw new Error('Session is already running');
+    }
+
+    const entry = this.runtimes.get(sessionId);
+    if (entry) {
+      await entry.runtime.stop();
+      this.runtimes.delete(sessionId);
+    }
+
+    const nextConfig = normalizeSessionConfig({
+      ...session.config,
+      ...normalizeConfigPatch(patch),
+    });
+    return this.patchSession(sessionId, { config: nextConfig });
   }
 
   async deleteSession(sessionId: string): Promise<void> {
@@ -592,6 +618,24 @@ export class ControlHub {
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
+}
+
+function normalizeConfigPatch(patch: CodexSessionConfigPatch | undefined): CodexSessionConfigPatch {
+  if (!patch) return {};
+  return {
+    ...patch,
+    model: emptyToUndefined(patch.model),
+    reasoningEffort: emptyToUndefined(patch.reasoningEffort),
+  };
+}
+
+function normalizeSessionConfig(config: CodexSessionConfig): CodexSessionConfig {
+  if (!config.bypassApprovalsAndSandbox) return config;
+  return {
+    ...config,
+    approvalPolicy: 'never' satisfies ApprovalPolicy,
+    sandbox: 'danger-full-access' satisfies SandboxMode,
+  };
 }
 
 function isExpiredControl(session: Session): boolean {

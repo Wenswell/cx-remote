@@ -14,17 +14,20 @@ import { ControlHub } from '../runtime/control-hub.js';
 import { encodeSseFrame } from '../runtime/sse.js';
 import { logger } from '../logger.js';
 
+const approvalPolicySchema = z.enum(['untrusted', 'on-failure', 'on-request', 'never']);
+const sandboxSchema = z.enum(['read-only', 'workspace-write', 'danger-full-access']);
+
 const createSessionSchema = z.object({
   cwd: z.string().min(1),
   title: z.string().optional(),
-  bypassApprovalsAndSandbox: z.boolean().optional(),
+  config: sessionConfigSchema().optional(),
 });
 
 const adoptSessionSchema = z.object({
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   title: z.string().optional(),
-  bypassApprovalsAndSandbox: z.boolean().optional(),
+  config: sessionConfigSchema().optional(),
 });
 
 const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
@@ -38,6 +41,10 @@ const sendMessageSchema = z.object({
 
 const updateSessionSchema = z.object({
   title: z.string().min(1),
+});
+
+const updateSessionConfigSchema = z.object({
+  config: sessionConfigSchema(),
 });
 
 const resolveApprovalSchema = z.object({
@@ -61,6 +68,17 @@ const updateSettingSchema = z.object({
 });
 
 const WEB_AUTH_COOKIE = 'cx_tg_auth';
+
+function sessionConfigSchema() {
+  return z.object({
+    model: z.string().optional(),
+    reasoningEffort: z.string().optional(),
+    approvalPolicy: approvalPolicySchema.optional(),
+    sandbox: sandboxSchema.optional(),
+    search: z.boolean().optional(),
+    bypassApprovalsAndSandbox: z.boolean().optional(),
+  });
+}
 
 export type HubServerOptions = {
   webDistDir?: string;
@@ -138,6 +156,7 @@ export class HubServer {
       settingsPath: this.config.settingsPath,
       homePath: homedir(),
       workspaceRoots: this.config.workspace.roots,
+      codexDefaults: this.hub.defaultSessionConfig(),
       eventCursor: this.hub.latestEventId(),
       server: {
         host: this.config.server.host,
@@ -213,7 +232,7 @@ export class HubServer {
       const session = this.hub.createSession({
         cwd: input.cwd,
         title: input.title,
-        bypassApprovalsAndSandbox: input.bypassApprovalsAndSandbox,
+        config: input.config,
       });
       return c.json(session, 201);
     });
@@ -224,7 +243,7 @@ export class HubServer {
         threadId: input.threadId,
         cwd: input.cwd,
         title: input.title,
-        bypassApprovalsAndSandbox: input.bypassApprovalsAndSandbox,
+        config: input.config,
       });
       return c.json(session, 201);
     });
@@ -234,6 +253,11 @@ export class HubServer {
     app.patch('/api/sessions/:id', async (c) => {
       const input = updateSessionSchema.parse(await c.req.json());
       return c.json(this.hub.renameSession(c.req.param('id'), input.title));
+    });
+
+    app.patch('/api/sessions/:id/config', async (c) => {
+      const input = updateSessionConfigSchema.parse(await c.req.json());
+      return c.json(await this.hub.updateSessionConfig(c.req.param('id'), input.config));
     });
 
     app.delete('/api/sessions/:id', async (c) => {

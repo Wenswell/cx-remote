@@ -24,6 +24,7 @@ export const SETTING_FIELDS: SettingField[] = [
   { key: 'codex.approvalPolicy', path: ['agents', 'codex', 'approvalPolicy'], type: 'enum', env: 'CODEX_APPROVAL_POLICY', choices: ['untrusted', 'on-failure', 'on-request', 'never'], description: 'Codex approval policy' },
   { key: 'codex.sandbox', path: ['agents', 'codex', 'sandbox'], type: 'enum', env: 'CODEX_SANDBOX', choices: ['read-only', 'workspace-write', 'danger-full-access'], description: 'Codex sandbox mode' },
   { key: 'codex.search', path: ['agents', 'codex', 'search'], type: 'boolean', env: 'CODEX_SEARCH', description: 'Codex web search flag' },
+  { key: 'codex.bypassApprovalsAndSandbox', path: ['agents', 'codex', 'bypassApprovalsAndSandbox'], type: 'boolean', env: 'CODEX_BYPASS_APPROVALS_AND_SANDBOX', description: 'Codex dangerous approval and sandbox bypass flag' },
   { key: 'web.enabled', path: ['controls', 'web', 'enabled'], type: 'boolean', readOnly: true, description: 'Web control availability' },
   { key: 'cli.enabled', path: ['controls', 'cli', 'enabled'], type: 'boolean', readOnly: true, description: 'CLI control availability' },
   { key: 'telegram.enabled', path: ['controls', 'telegram', 'enabled'], type: 'boolean', env: 'TG_ENABLED', restartRequired: true, description: 'Telegram control availability' },

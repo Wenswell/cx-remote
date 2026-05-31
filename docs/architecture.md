@@ -110,6 +110,7 @@ POST   /api/sessions
 POST   /api/sessions/adopt
 GET    /api/sessions/:id
 PATCH  /api/sessions/:id
+PATCH  /api/sessions/:id/config
 DELETE /api/sessions/:id
 PATCH  /api/sessions/:id/control
 DELETE /api/sessions/:id/control
@@ -128,7 +129,9 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
+`POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `approvalPolicy`, `sandbox`, `search`, and `bypassApprovalsAndSandbox`.
 `POST /api/sessions/adopt` accepts `threadId`, `cwd`, and optional `title`, then creates a Hub-managed session mapped to that native Codex thread. `codexThreadId` is unique in the Hub store.
+`PATCH /api/sessions/:id/config` updates an idle Hub session runtime config and restarts its idle app-server runtime on the next prompt. Running or queued sessions reject config updates.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
 `POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
@@ -165,6 +168,25 @@ POST /api/sessions/adopt
 Adoption stores the existing Codex thread id on a new Hub session. The next prompt resumes that thread with `thread/resume` before `turn/start`. Hub history starts at adoption; previous native Codex transcript remains in Codex storage.
 
 Deleting a Hub session removes Hub messages, queue, approvals, control state, and events. It leaves the native Codex thread in Codex storage.
+
+## Codex Runtime Flags
+
+Hub sessions store a Codex runtime config snapshot. `codex.*` settings provide defaults for new sessions; session creation, adoption, and idle-session config updates can override those defaults.
+
+Native Codex flag equivalents:
+
+```text
+codex --search
+  -> config.search = true
+
+codex --search --dangerously-bypass-approvals-and-sandbox
+  -> config.search = true
+  -> config.bypassApprovalsAndSandbox = true
+  -> config.approvalPolicy = never
+  -> config.sandbox = danger-full-access
+```
+
+`CodexRuntime` passes `search` and `bypassApprovalsAndSandbox` to the top-level `codex app-server` process, then passes `approvalPolicy` and `sandboxPolicy` to `thread/start`, `thread/resume`, and `turn/start`.
 
 ## First Version Boundaries
 

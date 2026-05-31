@@ -238,6 +238,15 @@ sl-button.session::part(label) {
   padding-top: 8px;
 }
 
+.runtime-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.runtime-details::part(content) {
+  padding-top: 8px;
+}
+
 sl-details.session-details::part(base) {
   border: 0;
   background: transparent;

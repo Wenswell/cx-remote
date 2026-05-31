@@ -35,6 +35,23 @@
             </div>
             <div id="dirs" class="dir-list"></div>
             <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
+            <sl-details class="runtime-details" summary="Runtime">
+              <div class="runtime-controls">
+                <sl-switch id="new-search" size="small">Search</sl-switch>
+                <sl-switch id="new-bypass" size="small">Bypass approvals and sandbox</sl-switch>
+                <sl-select id="new-sandbox" label="Sandbox" size="small">
+                  <sl-option value="read-only">read-only</sl-option>
+                  <sl-option value="workspace-write">workspace-write</sl-option>
+                  <sl-option value="danger-full-access">danger-full-access</sl-option>
+                </sl-select>
+                <sl-select id="new-approval-policy" label="Approval" size="small">
+                  <sl-option value="untrusted">untrusted</sl-option>
+                  <sl-option value="on-failure">on-failure</sl-option>
+                  <sl-option value="on-request">on-request</sl-option>
+                  <sl-option value="never">never</sl-option>
+                </sl-select>
+              </div>
+            </sl-details>
             <sl-button variant="primary" type="submit">
               <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
               Create
@@ -45,6 +62,23 @@
             <sl-input id="adopt-thread-id" name="threadId" placeholder="Codex thread ID" required size="small"></sl-input>
             <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required size="small"></sl-input>
             <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
+            <sl-details class="runtime-details" summary="Runtime">
+              <div class="runtime-controls">
+                <sl-switch id="adopt-search" size="small">Search</sl-switch>
+                <sl-switch id="adopt-bypass" size="small">Bypass approvals and sandbox</sl-switch>
+                <sl-select id="adopt-sandbox" label="Sandbox" size="small">
+                  <sl-option value="read-only">read-only</sl-option>
+                  <sl-option value="workspace-write">workspace-write</sl-option>
+                  <sl-option value="danger-full-access">danger-full-access</sl-option>
+                </sl-select>
+                <sl-select id="adopt-approval-policy" label="Approval" size="small">
+                  <sl-option value="untrusted">untrusted</sl-option>
+                  <sl-option value="on-failure">on-failure</sl-option>
+                  <sl-option value="on-request">on-request</sl-option>
+                  <sl-option value="never">never</sl-option>
+                </sl-select>
+              </div>
+            </sl-details>
             <sl-button variant="primary" type="submit">
               <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
               Adopt thread
@@ -73,6 +107,10 @@
           <sl-button id="rename" type="button" size="small" title="Edit the session title">
             <sl-icon slot="prefix" library="system" name="copy"></sl-icon>
             Edit title
+          </sl-button>
+          <sl-button id="runtime" type="button" size="small" title="Edit this session runtime config">
+            <sl-icon slot="prefix" library="system" name="gear-fill"></sl-icon>
+            Runtime
           </sl-button>
           <sl-button id="stop" type="button" size="small" variant="warning" title="Cancel the running turn and queued prompts">
             <sl-icon slot="prefix" library="system" name="x-circle-fill"></sl-icon>
@@ -106,6 +144,27 @@
     <sl-icon slot="icon" library="system" name="x-circle-fill"></sl-icon>
     <span id="error-message"></span>
   </sl-alert>
+  <sl-dialog id="runtime-dialog" label="Session runtime">
+    <div class="runtime-controls">
+      <sl-switch id="runtime-search" size="small">Search</sl-switch>
+      <sl-switch id="runtime-bypass" size="small">Bypass approvals and sandbox</sl-switch>
+      <sl-select id="runtime-sandbox" label="Sandbox" size="small">
+        <sl-option value="read-only">read-only</sl-option>
+        <sl-option value="workspace-write">workspace-write</sl-option>
+        <sl-option value="danger-full-access">danger-full-access</sl-option>
+      </sl-select>
+      <sl-select id="runtime-approval-policy" label="Approval" size="small">
+        <sl-option value="untrusted">untrusted</sl-option>
+        <sl-option value="on-failure">on-failure</sl-option>
+        <sl-option value="on-request">on-request</sl-option>
+        <sl-option value="never">never</sl-option>
+      </sl-select>
+      <sl-input id="runtime-model" label="Model" size="small"></sl-input>
+      <sl-input id="runtime-reasoning-effort" label="Reasoning effort" size="small"></sl-input>
+    </div>
+    <sl-button slot="footer" id="runtime-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="runtime-save" type="button" variant="primary">Save</sl-button>
+  </sl-dialog>
   <sl-dialog id="delete-dialog" label="Delete Hub session">
     <div id="delete-dialog-message">Delete this session?</div>
     <div class="muted">This removes Hub messages, queue, approvals, and events. The Codex thread remains in Codex.</div>
