@@ -172,4 +172,4 @@ cx-tg adopt --thread <codex-thread-id> --cwd <path> --search --dangerously-bypas
 cx-tg session-config <session-id> --sandbox danger-full-access --approval-policy never
 ```
 
-When `bypassApprovalsAndSandbox` is true, validation stores `approvalPolicy=never` and `sandbox=danger-full-access`.
+When `bypassApprovalsAndSandbox` is true, validation stores `approvalPolicy=never` and `sandbox=danger-full-access`. Runtime requests use app-server v2 permissions, so `danger-full-access` is sent as `permissions=:danger-full-access`.

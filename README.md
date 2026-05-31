@@ -127,7 +127,7 @@ cx-tg adopt --thread <codex-thread-id> --cwd <path> --search --dangerously-bypas
 cx-tg session-config <session-id> --search --dangerously-bypass-approvals-and-sandbox
 ```
 
-The dangerous bypass flag stores `approvalPolicy=never`, `sandbox=danger-full-access`, and `bypassApprovalsAndSandbox=true` on the Hub session. Existing sessions can be updated while idle; queued or running sessions reject config updates.
+The dangerous bypass flag stores `approvalPolicy=never`, `sandbox=danger-full-access`, and `bypassApprovalsAndSandbox=true` on the Hub session. At runtime, Hub starts `codex app-server` with `--search` only when search is enabled, then sends `approvalPolicy=never` and `permissions=:danger-full-access` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
 
 ## Telegram
 

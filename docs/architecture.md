@@ -37,7 +37,7 @@ src/cli.ts        terminal CLI client
 
 | Entity | Purpose |
 |---|---|
-| `Session` | Hub-managed record with Codex working directory, status, unique thread id, model/sandbox config, active control owner |
+| `Session` | Hub-managed record with Codex working directory, status, unique thread id, runtime config, active control owner |
 | `Message` | user/assistant/tool/system messages for a session |
 | `PromptJob` | persisted per-session prompt queue with `queued`, `running`, `done`, `failed`, and `canceled` states |
 | `Approval` | pending and resolved Codex approvals or choice requests |
@@ -186,7 +186,15 @@ codex --search --dangerously-bypass-approvals-and-sandbox
   -> config.sandbox = danger-full-access
 ```
 
-`CodexRuntime` passes `search` and `bypassApprovalsAndSandbox` to the top-level `codex app-server` process, then passes `approvalPolicy` and `sandboxPolicy` to `thread/start`, `thread/resume`, and `turn/start`.
+`CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends `approvalPolicy` and a v2 `permissions` profile through `thread/start`, `thread/resume`, and `turn/start`.
+
+Sandbox-to-permissions mapping:
+
+| Session sandbox | App-server permissions |
+|---|---|
+| `read-only` | `:read-only` |
+| `workspace-write` | `:workspace` |
+| `danger-full-access` | `:danger-full-access` |
 
 ## First Version Boundaries
 

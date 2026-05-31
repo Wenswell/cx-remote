@@ -1,13 +1,8 @@
-import type { ApprovalPolicy, ApprovalResult, ChoiceResult, CodexEvent, SandboxMode, Session } from '../../domain/types.js';
+import type { ApprovalResult, ChoiceResult, CodexEvent, SandboxMode, Session } from '../../domain/types.js';
 import { asRecord, asString } from '../../utils.js';
 import { logger } from '../../logger.js';
 import { CodexAppServerClient } from './app-server-client.js';
 import { CodexEventConverter } from './event-converter.js';
-
-type SandboxPolicy =
-  | { type: 'readOnly' }
-  | { type: 'workspaceWrite' }
-  | { type: 'dangerFullAccess' };
 
 export interface CodexRuntimeOptions {
   bin: string;
@@ -35,7 +30,6 @@ export class CodexRuntime {
     this.client = new CodexAppServerClient({
       bin: options.bin,
       search: options.session.config.search,
-      bypassApprovalsAndSandbox: options.session.config.bypassApprovalsAndSandbox,
       onDisconnect: () => this.handleDisconnect(),
     });
   }
@@ -136,7 +130,7 @@ export class CodexRuntime {
         cwd: this.options.session.cwd,
         input: [{ type: 'text', text: prompt }],
         approvalPolicy: this.options.session.config.approvalPolicy,
-        sandboxPolicy: sandboxPolicy(this.options.session.config.sandbox),
+        permissions: permissionProfile(this.options.session.config.sandbox),
         model: emptyToUndefined(this.options.session.config.model),
         effort: emptyToUndefined(this.options.session.config.reasoningEffort),
       }, signal);
@@ -183,7 +177,7 @@ export class CodexRuntime {
     return {
       cwd: this.options.session.cwd,
       approvalPolicy: this.options.session.config.approvalPolicy,
-      sandbox: this.options.session.config.sandbox,
+      permissions: permissionProfile(this.options.session.config.sandbox),
       model: emptyToUndefined(this.options.session.config.model),
       config: {
         ...(this.options.session.config.reasoningEffort ? { model_reasoning_effort: this.options.session.config.reasoningEffort } : {}),
@@ -225,21 +219,17 @@ function extractTurnId(response: unknown): string | null {
   return asString(turn?.id ?? turn?.turnId ?? turn?.turn_id ?? record.turnId ?? record.turn_id) ?? null;
 }
 
-function sandboxPolicy(sandbox: SandboxMode): SandboxPolicy {
+function permissionProfile(sandbox: SandboxMode): string {
   switch (sandbox) {
     case 'read-only':
-      return { type: 'readOnly' };
+      return ':read-only';
     case 'danger-full-access':
-      return { type: 'dangerFullAccess' };
+      return ':danger-full-access';
     case 'workspace-write':
-      return { type: 'workspaceWrite' };
+      return ':workspace';
   }
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
-}
-
-export function approvalPolicy(value: ApprovalPolicy): ApprovalPolicy {
-  return value;
 }

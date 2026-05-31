@@ -30,7 +30,6 @@ interface PendingRequest {
 export interface CodexAppServerClientOptions {
   bin: string;
   search: boolean;
-  bypassApprovalsAndSandbox: boolean;
   onDisconnect?: () => void;
 }
 
@@ -48,13 +47,11 @@ export class CodexAppServerClient {
 
     const args = [
       ...(this.options.search ? ['--search'] : []),
-      ...(this.options.bypassApprovalsAndSandbox ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
       'app-server',
     ];
     logger.info('codex app-server starting', {
       bin: this.options.bin,
       search: this.options.search,
-      bypassApprovalsAndSandbox: this.options.bypassApprovalsAndSandbox,
     });
     this.child = spawn(this.options.bin, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -97,7 +94,7 @@ export class CodexAppServerClient {
         title: 'CX TG',
         version: '0.1.0',
       },
-      capabilities: { experimentalApi: true },
+      capabilities: { experimentalApi: true, requestAttestation: false },
     }, 30_000);
     this.notify('initialized');
     logger.info('codex app-server initialized');

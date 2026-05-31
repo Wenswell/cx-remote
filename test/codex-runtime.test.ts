@@ -65,7 +65,7 @@ test('CodexRuntime starts a new thread when no thread id is stored', async () =>
   }
 });
 
-test('CodexRuntime forwards search and dangerous bypass config', async () => {
+test('CodexRuntime forwards search and dangerous bypass permissions', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
   const fake = createFakeCodexBin(tempDir);
   const runtime = new CodexRuntime({
@@ -87,13 +87,15 @@ test('CodexRuntime forwards search and dangerous bypass config', async () => {
     await runtime.sendPrompt('hello');
     const entries = readRpcLog(fake.logPath);
     const argv = entries.find((entry) => entry.method === '__argv')?.params as string[] | undefined;
-    const threadStart = entries.find((entry) => entry.method === 'thread/start')?.params as { sandbox?: string; approvalPolicy?: string } | undefined;
-    const turnStart = entries.find((entry) => entry.method === 'turn/start')?.params as { sandboxPolicy?: { type?: string }; approvalPolicy?: string } | undefined;
+    const threadStart = entries.find((entry) => entry.method === 'thread/start')?.params as { permissions?: string; sandbox?: string; approvalPolicy?: string } | undefined;
+    const turnStart = entries.find((entry) => entry.method === 'turn/start')?.params as { permissions?: string; sandboxPolicy?: unknown; approvalPolicy?: string } | undefined;
 
-    assert.deepEqual(argv, ['--search', '--dangerously-bypass-approvals-and-sandbox', 'app-server']);
-    assert.equal(threadStart?.sandbox, 'danger-full-access');
+    assert.deepEqual(argv, ['--search', 'app-server']);
+    assert.equal(threadStart?.permissions, ':danger-full-access');
+    assert.equal(threadStart?.sandbox, undefined);
     assert.equal(threadStart?.approvalPolicy, 'never');
-    assert.equal(turnStart?.sandboxPolicy?.type, 'dangerFullAccess');
+    assert.equal(turnStart?.permissions, ':danger-full-access');
+    assert.equal(turnStart?.sandboxPolicy, undefined);
     assert.equal(turnStart?.approvalPolicy, 'never');
   } finally {
     await runtime.stop().catch(() => {});
