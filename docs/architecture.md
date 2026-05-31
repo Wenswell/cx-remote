@@ -120,6 +120,7 @@ PATCH  /api/settings
 GET    /api/events
 ```
 
+`GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. The server replays stored events after the cursor, then keeps the SSE connection open for live events.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
 

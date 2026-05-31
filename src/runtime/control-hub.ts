@@ -123,6 +123,11 @@ export class ControlHub {
     return this.store.listEvents(afterId, sessionId);
   }
 
+  latestEventId(sessionId?: string): number {
+    if (sessionId) this.getSession(sessionId);
+    return this.store.latestEventId(sessionId);
+  }
+
   listPromptJobs(sessionId: string, query: Omit<PromptJobQuery, 'sessionId'> = {}): PromptJob[] {
     this.getSession(sessionId);
     return this.store.listPromptJobs({ ...query, sessionId });

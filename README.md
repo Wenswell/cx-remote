@@ -66,7 +66,7 @@ The Web console can:
 - view active prompt queue state
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
-- reconnect the event stream with stored event replay
+- keep one event stream per selected session and resume from the session event cursor
 - claim or release exclusive session control
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename and delete sessions

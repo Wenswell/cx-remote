@@ -11,6 +11,7 @@ import { ControlHub } from '../src/runtime/control-hub.js';
 import { PermissionService } from '../src/runtime/permissions.js';
 import { Store } from '../src/store/store.js';
 import { configureLogger } from '../src/logger.js';
+import { webPage } from '../src/web/page.js';
 
 configureLogger({ level: 'error', console: false, prompts: false });
 
@@ -91,6 +92,52 @@ test('session queue API lists active prompt jobs', async () => {
     store.close();
     cleanupDb(dbPath);
   }
+});
+
+test('session detail exposes latest event cursor for SSE bootstrap', async () => {
+  const dbPath = tempDbPath();
+  const store = new Store(dbPath);
+  const config = createConfig(dbPath);
+  const events = new EventBus(store);
+  const permissions = new PermissionService(store, events, config);
+  const hub = new ControlHub(config, store, events, permissions);
+  const app = new HubServer(hub, config).createApp();
+  const abort = new AbortController();
+
+  try {
+    const session = createSession(store);
+    const event = store.addEvent({ type: 'session.updated', sessionId: session.id, payload: { marker: 'historical' }, createdAt: 10 });
+
+    const detail = await json<{ eventCursor: number }>(await app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(config) },
+    ));
+    assert.equal(detail.eventCursor, event.id);
+
+    const response = await app.request(
+      `/api/events?sessionId=${encodeURIComponent(session.id)}&token=${encodeURIComponent(config.server.accessToken)}&afterId=${detail.eventCursor}`,
+      { signal: abort.signal },
+    );
+    const text = await readInitialSse(response, abort);
+
+    assert.equal(response.status, 200);
+    assert.match(text, /"type":"ready"/);
+    assert.doesNotMatch(text, /"marker":"historical"/);
+  } finally {
+    abort.abort();
+    await hub.shutdown();
+    store.close();
+    cleanupDb(dbPath);
+  }
+});
+
+test('web page keeps one SSE connection per session and resumes by cursor', () => {
+  const page = webPage();
+
+  assert.match(page, /eventCursorBySession/);
+  assert.match(page, /eventSourceSessionId === sessionId/);
+  assert.match(page, /params\.set\('afterId'/);
+  assert.match(page, /!messages\.some\(\(item\) => item\.id === message\.id\)/);
 });
 
 async function readInitialSse(response: Response, abort: AbortController): Promise<string> {

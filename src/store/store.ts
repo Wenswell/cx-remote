@@ -467,6 +467,13 @@ export class Store {
     return rows.map(decodeEvent);
   }
 
+  latestEventId(sessionId?: string): number {
+    const row = sessionId
+      ? this.db.prepare('SELECT id FROM events WHERE sessionId = ? ORDER BY id DESC LIMIT 1').get(sessionId) as { id: number } | undefined
+      : this.db.prepare('SELECT id FROM events ORDER BY id DESC LIMIT 1').get() as { id: number } | undefined;
+    return row ? Number(row.id) : 0;
+  }
+
   countPromptJobs(statuses: PromptJobStatus[], sessionId?: string): number {
     const targets = uniqueStatuses(statuses);
     if (targets.length === 0) return 0;

@@ -282,6 +282,8 @@ export function webPage(): string {
     let currentPath = '';
     let streamBuffer = '';
     let eventSource = null;
+    let eventSourceSessionId = '';
+    const eventCursorBySession = new Map();
 
     const $ = (id) => document.getElementById(id);
 
@@ -366,24 +368,31 @@ export function webPage(): string {
     }
 
     async function loadSession() {
-      streamBuffer = '';
       if (!activeSessionId) {
+        closeEvents();
         currentSession = null;
         messages = [];
         pendingApprovals = [];
         approvalHistory = [];
         promptQueue = [];
+        streamBuffer = '';
         renderSession();
         return;
       }
-      const data = await api('/api/sessions/' + encodeURIComponent(activeSessionId));
+      const sessionId = activeSessionId;
+      const switchingSession = currentSession?.id !== sessionId;
+      if (switchingSession) streamBuffer = '';
+      const data = await api('/api/sessions/' + encodeURIComponent(sessionId));
+      if (sessionId !== activeSessionId) return;
       currentSession = data.session;
       messages = data.messages;
       pendingApprovals = data.approvals;
       promptQueue = data.queue || [];
-      approvalHistory = await api('/api/approvals?sessionId=' + encodeURIComponent(activeSessionId) + '&status=all&limit=50');
+      rememberEventCursor(sessionId, data.eventCursor);
+      approvalHistory = await api('/api/approvals?sessionId=' + encodeURIComponent(sessionId) + '&status=all&limit=50');
+      if (sessionId !== activeSessionId) return;
       renderSession();
-      connectEvents();
+      connectEvents(sessionId);
     }
 
     function renderSessions() {
@@ -550,13 +559,34 @@ export function webPage(): string {
       await loadSession();
     }
 
-    function connectEvents() {
+    function rememberEventCursor(sessionId, value) {
+      const id = Number(value);
+      if (!Number.isFinite(id) || id <= 0) return;
+      const current = eventCursorBySession.get(sessionId) || 0;
+      if (id > current) eventCursorBySession.set(sessionId, id);
+    }
+
+    function closeEvents() {
       if (eventSource) eventSource.close();
-      if (!activeSessionId) return;
-      const url = '/api/events?sessionId=' + encodeURIComponent(activeSessionId) + '&token=' + encodeURIComponent(token);
+      eventSource = null;
+      eventSourceSessionId = '';
+    }
+
+    function connectEvents(sessionId) {
+      if (eventSource && eventSourceSessionId === sessionId) return;
+      closeEvents();
+      if (!sessionId) return;
+      eventSourceSessionId = sessionId;
+      const params = new URLSearchParams({ sessionId, token });
+      const afterId = eventCursorBySession.get(sessionId);
+      if (afterId) params.set('afterId', String(afterId));
+      const url = '/api/events?' + params.toString();
       eventSource = new EventSource(url);
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        rememberEventCursor(sessionId, event.lastEventId || data.id);
+        if (sessionId !== activeSessionId) return;
+        if (data.type === 'ready') return;
         if (data.type === 'message.delta') {
           appendDelta(String(data.payload?.delta || ''));
           return;
@@ -564,12 +594,13 @@ export function webPage(): string {
         if (data.type === 'session.deleted') {
           activeSessionId = '';
           localStorage.removeItem('cx_tg_session');
+          closeEvents();
           loadAll().catch(console.error);
           return;
         }
         if (data.type === 'message.created') {
           const message = data.payload?.message;
-          if (message) {
+          if (message && !messages.some((item) => item.id === message.id)) {
             messages.push(message);
             if (message.role === 'assistant') streamBuffer = '';
             renderMessages();

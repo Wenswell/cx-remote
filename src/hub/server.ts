@@ -202,6 +202,7 @@ export class HubServer {
         messages: this.hub.listMessages(session.id),
         approvals: this.hub.listApprovals({ sessionId: session.id, status: 'pending' }),
         queue: this.hub.listPromptJobs(session.id, { statuses: ['running', 'queued'], limit: 50 }),
+        eventCursor: this.hub.latestEventId(session.id),
       });
     });
 
