@@ -133,6 +133,13 @@ const tokenFromUrl = new URLSearchParams(location.search).get('token') || '';
 if (tokenFromUrl) clearTokenFromUrl();
 
 const notifyPrefsKey = 'cx_tg_notify_sessions';
+const refreshIconSvg = [
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">',
+  '<path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>',
+  '<path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466"/>',
+  '</svg>',
+].join('');
+const refreshIconUrl = `data:image/svg+xml,${encodeURIComponent(refreshIconSvg)}`;
 
 let clientId = localStorage.getItem('cx_tg_client_id');
 if (!clientId) {
@@ -179,12 +186,15 @@ let notificationEventSource: EventSource | null = null;
 let notificationEventCursor = 0;
 let pendingDeleteSessionId = '';
 const eventCursorBySession = new Map<string, number>();
+const busyControls = new WeakSet<HTMLElement>();
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`Missing element: ${id}`);
   return found as T;
 }
+
+element('refresh-icon').setAttribute('src', refreshIconUrl);
 
 async function ensureAuth(): Promise<void> {
   const current = await fetch(apiPath.status, { credentials: 'same-origin' });
@@ -696,7 +706,7 @@ function createButton(
     button.appendChild(icon);
   }
   if (label) button.append(label);
-  button.addEventListener('click', () => run(Promise.resolve(options.onClick())));
+  button.addEventListener('click', () => runAction(button, options.onClick));
   return button;
 }
 
@@ -803,31 +813,56 @@ function run(promise: Promise<unknown>): void {
   promise.catch(showError);
 }
 
+function runAction(control: HTMLElement, action: () => Promise<unknown> | unknown): void {
+  if (busyControls.has(control)) return;
+  busyControls.add(control);
+  setControlBusy(control, true);
+  Promise.resolve()
+    .then(action)
+    .catch(showError)
+    .finally(() => {
+      busyControls.delete(control);
+      setControlBusy(control, false);
+      renderActionState();
+    });
+}
+
+function setControlBusy(control: HTMLElement, busy: boolean): void {
+  control.toggleAttribute('aria-busy', busy);
+  if ('disabled' in control) (control as ButtonElement).disabled = busy;
+}
+
+function submitButton(form: HTMLFormElement): HTMLElement {
+  return form.querySelector('sl-button[type="submit"]') as HTMLElement || form;
+}
+
 element<ValueElement>('workspace-root').addEventListener('sl-change', (event) => {
   currentRoot = (event.currentTarget as ValueElement).value;
   currentPath = '';
   localStorage.setItem('cx_tg_root', currentRoot);
   run(loadDirs(''));
 });
-element('root-dir').addEventListener('click', () => run(loadDirs('')));
-element('refresh').addEventListener('click', () => run(loadAll()));
-element('claim').addEventListener('click', () => run((async () => {
+element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
+element('refresh').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, loadAll));
+element('claim').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, '/control'), {
     method: 'PATCH',
     body: JSON.stringify({ controlType: 'web', ownerId: clientId, controlLabel, ttlMs: WEB_CONTROL_TTL_MS }),
   });
   await loadSession();
-})()));
-element('release').addEventListener('click', () => run((async () => {
+}));
+element('release').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, `/control?ownerId=${encodeURIComponent(clientId)}`), { method: 'DELETE' });
   await loadSession();
-})()));
-element('stop').addEventListener('click', () => {
-  if (activeSessionId) run(api(apiPath.session(activeSessionId, '/interrupt'), { method: 'POST' }).then(loadAll));
+}));
+element('stop').addEventListener('click', (event) => {
+  runAction(event.currentTarget as HTMLElement, async () => {
+    if (activeSessionId) await api(apiPath.session(activeSessionId, '/interrupt'), { method: 'POST' }).then(loadAll);
+  });
 });
-element('rename').addEventListener('click', () => run((async () => {
+element('rename').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   const title = prompt('Title', currentSession.title);
   if (!title) return;
@@ -836,15 +871,15 @@ element('rename').addEventListener('click', () => run((async () => {
     body: JSON.stringify({ title }),
   });
   await loadAll();
-})()));
-element('delete').addEventListener('click', () => {
+}));
+element('delete').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => {
   if (currentSession) showDeleteDialog(currentSession);
-});
-element<ToggleElement>('notify').addEventListener('sl-change', (event) => run((async () => {
+}));
+element<ToggleElement>('notify').addEventListener('sl-change', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   await updateSessionNotifications((event.currentTarget as ToggleElement).checked);
-})()));
-element('delete-cancel').addEventListener('click', () => run(element<DialogElement>('delete-dialog').hide()));
-element('delete-confirm').addEventListener('click', () => run((async () => {
+}));
+element('delete-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => element<DialogElement>('delete-dialog').hide()));
+element('delete-confirm').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!pendingDeleteSessionId) return;
   await api(apiPath.session(pendingDeleteSessionId), { method: 'DELETE' });
   await element<DialogElement>('delete-dialog').hide();
@@ -852,51 +887,60 @@ element('delete-confirm').addEventListener('click', () => run((async () => {
   pendingDeleteSessionId = '';
   localStorage.removeItem('cx_tg_session');
   await loadAll();
-})()));
-element<HTMLFormElement>('new-session').addEventListener('submit', (event) => run((async () => {
+}));
+element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
   event.preventDefault();
   const formElement = event.currentTarget as HTMLFormElement;
-  const cwd = element<ValueElement>('cwd').value.trim();
-  const title = element<ValueElement>('new-title').value.trim();
-  const session = await api<Session>(apiPath.sessions, {
-    method: 'POST',
-    body: JSON.stringify({ cwd, title }),
+  runAction(submitButton(formElement), async () => {
+    const cwd = element<ValueElement>('cwd').value.trim();
+    const title = element<ValueElement>('new-title').value.trim();
+    const session = await api<Session>(apiPath.sessions, {
+      method: 'POST',
+      body: JSON.stringify({ cwd, title }),
+    });
+    activeSessionId = session.id;
+    localStorage.setItem('cx_tg_session', activeSessionId);
+    formElement.reset();
+    await loadAll();
   });
-  activeSessionId = session.id;
-  localStorage.setItem('cx_tg_session', activeSessionId);
-  formElement.reset();
-  await loadAll();
-})()));
-element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => run((async () => {
+});
+element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => {
   event.preventDefault();
   const formElement = event.currentTarget as HTMLFormElement;
-  const threadId = element<ValueElement>('adopt-thread-id').value.trim();
-  const cwd = element<ValueElement>('adopt-cwd').value.trim();
-  const title = element<ValueElement>('adopt-title').value.trim();
-  const session = await api<Session>(apiPath.adoptSession, {
-    method: 'POST',
-    body: JSON.stringify({ threadId, cwd, title }),
+  runAction(submitButton(formElement), async () => {
+    const threadId = element<ValueElement>('adopt-thread-id').value.trim();
+    const cwd = element<ValueElement>('adopt-cwd').value.trim();
+    const title = element<ValueElement>('adopt-title').value.trim();
+    const session = await api<Session>(apiPath.adoptSession, {
+      method: 'POST',
+      body: JSON.stringify({ threadId, cwd, title }),
+    });
+    activeSessionId = session.id;
+    localStorage.setItem('cx_tg_session', activeSessionId);
+    formElement.reset();
+    element<ValueElement>('adopt-cwd').value = element<ValueElement>('cwd').value;
+    await loadAll();
   });
-  activeSessionId = session.id;
-  localStorage.setItem('cx_tg_session', activeSessionId);
-  formElement.reset();
-  element<ValueElement>('adopt-cwd').value = element<ValueElement>('cwd').value;
-  await loadAll();
-})()));
-element<HTMLFormElement>('composer').addEventListener('submit', (event) => run((async () => {
+});
+element<HTMLFormElement>('composer').addEventListener('submit', (event) => {
   event.preventDefault();
-  if (!activeSessionId) throw new Error('Select a session');
   const formElement = event.currentTarget as HTMLFormElement;
-  const text = element<ValueElement>('composer-text').value;
-  element('send-state').textContent = 'Sending';
-  await api(apiPath.session(activeSessionId, '/messages'), {
-    method: 'POST',
-    body: JSON.stringify({ text, ownerId: clientId, controlLabel }),
+  runAction(submitButton(formElement), async () => {
+    if (!activeSessionId) throw new Error('Select a session');
+    const text = element<ValueElement>('composer-text').value;
+    element('send-state').textContent = 'Sending';
+    try {
+      await api(apiPath.session(activeSessionId, '/messages'), {
+        method: 'POST',
+        body: JSON.stringify({ text, ownerId: clientId, controlLabel }),
+      });
+      formElement.reset();
+      await loadSession();
+    } finally {
+      element('send-state').textContent = '';
+    }
   });
-  formElement.reset();
-  element('send-state').textContent = '';
-  await loadSession();
-})()));
+});
 
 run((async () => {
   await ensureAuth();
