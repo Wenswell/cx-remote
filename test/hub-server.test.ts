@@ -3,6 +3,7 @@ import test from 'node:test';
 import { configureLogger } from '../src/logger.js';
 import { webPage } from '../src/web/page.js';
 import { webScript } from '../src/web/script.js';
+import { webStyles } from '../src/web/styles.js';
 import {
   authHeaders,
   closeTestHub,
@@ -226,6 +227,7 @@ test('session detail exposes latest event cursor for SSE bootstrap', async () =>
 test('web page loads split assets and client uses cookie event stream', () => {
   const page = webPage();
   const script = webScript();
+  const styles = webStyles();
 
   assert.match(page, /\/assets\/web\.css/);
   assert.match(page, /\/assets\/web\.js/);
@@ -240,4 +242,10 @@ test('web page loads split assets and client uses cookie event stream', () => {
   assert.match(script, /const formElement = event\.currentTarget/);
   assert.match(script, /function renderActionState\(\)/);
   assert.match(script, /\$\('stop'\)\.hidden = !hasSession \|\| !hasActiveWork/);
+  assert.match(script, /function renderSessionHeader\(\)/);
+  assert.match(script, /function metaChip\(label, value\)/);
+  assert.match(script, /function shortId\(value\)/);
+  assert.match(styles, /\.shell \{/);
+  assert.match(styles, /height: 100vh/);
+  assert.match(styles, /grid-template-rows: auto auto minmax\(0, 1fr\) auto/);
 });

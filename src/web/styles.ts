@@ -66,18 +66,23 @@ export function webStyles(): string {
     .shell {
       display: grid;
       grid-template-columns: minmax(270px, 360px) minmax(0, 1fr);
-      min-height: 100vh;
+      height: 100vh;
+      min-height: 0;
+      overflow: hidden;
     }
     .side {
       border-right: 1px solid var(--line);
       padding: 16px;
       overflow: auto;
+      min-height: 0;
     }
     .main {
       display: grid;
-      grid-template-rows: auto auto 1fr auto;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
       min-width: 0;
-      min-height: 100vh;
+      min-height: 0;
+      height: 100vh;
+      overflow: hidden;
     }
     .topbar {
       display: flex;
@@ -140,6 +145,27 @@ export function webStyles(): string {
       font-size: 12px;
       overflow-wrap: anywhere;
     }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .meta-chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: color-mix(in srgb, var(--panel) 78%, var(--bg));
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .meta-chip strong {
+      color: var(--text);
+      font-weight: 650;
+    }
+    .runtime-line {
+      margin-top: 6px;
+    }
     .approvals {
       border-bottom: 1px solid var(--line);
       padding: 12px 16px;
@@ -162,6 +188,7 @@ export function webStyles(): string {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      min-height: 0;
     }
     .msg {
       border: 1px solid var(--line);
@@ -193,11 +220,17 @@ export function webStyles(): string {
       margin: 0;
     }
     @media (max-width: 760px) {
-      .shell { grid-template-columns: 1fr; }
+      .shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(180px, 42vh) minmax(0, 1fr);
+      }
       .side {
         border-right: 0;
         border-bottom: 1px solid var(--line);
-        max-height: 48vh;
+        height: auto;
+      }
+      .main {
+        height: auto;
       }
       .topbar { align-items: flex-start; }
     }`;

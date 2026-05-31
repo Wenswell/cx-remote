@@ -208,26 +208,60 @@ export function webScript(): string {
       if (!currentSession) {
         $('session-title').textContent = 'No session';
         $('session-meta').textContent = 'Create or select a session.';
-        $('session-detail').textContent = '';
+        $('session-detail').innerHTML = '';
       } else {
-        $('session-title').textContent = currentSession.title;
-        $('session-meta').textContent = currentSession.cwd + ' · ' + currentSession.status + ' · ' + currentSession.id;
-        const config = currentSession.config || {};
-        $('session-detail').textContent = [
-          'model ' + (config.model || '-'),
-          'sandbox ' + (config.sandbox || '-'),
-          'approval ' + (config.approvalPolicy || '-'),
-          'control ' + (currentSession.controlLabel || 'shared'),
-          'lease ' + (currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleString() : '-'),
-          'thread ' + (currentSession.codexThreadId || '-'),
-          'turn ' + (currentSession.currentTurnId || '-'),
-          'error ' + (currentSession.lastError || '-')
-        ].join(' · ');
+        renderSessionHeader();
       }
       renderMessages();
       renderPromptQueue();
       renderApprovals();
       renderActionState();
+    }
+
+    function renderSessionHeader() {
+      const config = currentSession.config || {};
+      $('session-title').textContent = currentSession.title;
+      $('session-meta').textContent = currentSession.cwd;
+
+      const detail = $('session-detail');
+      detail.innerHTML = '';
+      const chips = document.createElement('div');
+      chips.className = 'meta-row';
+      [
+        ['status', currentSession.status],
+        ['control', currentSession.controlLabel || 'shared'],
+        ['model', config.model || '-'],
+        ['sandbox', config.sandbox || '-'],
+        ['approval', config.approvalPolicy || '-'],
+      ].forEach(([label, value]) => chips.appendChild(metaChip(label, value)));
+      detail.appendChild(chips);
+
+      const runtime = [
+        ['id', shortId(currentSession.id)],
+        ['thread', shortId(currentSession.codexThreadId)],
+        ['turn', shortId(currentSession.currentTurnId)],
+        ['lease', currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleTimeString() : ''],
+        ['error', currentSession.lastError || ''],
+      ].filter(([, value]) => value);
+      if (runtime.length) {
+        const line = document.createElement('div');
+        line.className = 'runtime-line';
+        line.textContent = runtime.map(([label, value]) => label + ' ' + value).join(' · ');
+        detail.appendChild(line);
+      }
+    }
+
+    function metaChip(label, value) {
+      const span = document.createElement('span');
+      span.className = 'meta-chip';
+      const key = document.createElement('strong');
+      key.textContent = label + ' ';
+      span.append(key, String(value));
+      return span;
+    }
+
+    function shortId(value) {
+      return value ? String(value).slice(0, 8) : '';
     }
 
     function renderActionState() {
