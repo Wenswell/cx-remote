@@ -21,33 +21,37 @@
       </div>
       <strong>Hub-managed sessions</strong>
       <div id="sessions" class="stack"></div>
-      <form id="new-session" class="stack">
-        <strong>Create managed session</strong>
-        <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
-        <div class="row">
-          <sl-button id="root-dir" type="button" size="small">
-            <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
-            Root
-          </sl-button>
-          <sl-input id="cwd" name="cwd" placeholder="cwd" required size="small"></sl-input>
+      <sl-details summary="Create or adopt">
+        <div class="session-tools stack">
+          <form id="new-session" class="stack">
+            <strong>Create managed session</strong>
+            <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
+            <div class="row">
+              <sl-button id="root-dir" type="button" size="small">
+                <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
+                Root
+              </sl-button>
+              <sl-input id="cwd" name="cwd" placeholder="cwd" required size="small"></sl-input>
+            </div>
+            <div id="dirs" class="dir-list"></div>
+            <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
+            <sl-button variant="primary" type="submit">
+              <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+              Create
+            </sl-button>
+          </form>
+          <form id="adopt-session" class="stack">
+            <strong>Adopt Codex thread</strong>
+            <sl-input id="adopt-thread-id" name="threadId" placeholder="Codex thread ID" required size="small"></sl-input>
+            <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required size="small"></sl-input>
+            <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
+            <sl-button variant="primary" type="submit">
+              <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+              Adopt thread
+            </sl-button>
+          </form>
         </div>
-        <div id="dirs" class="dir-list"></div>
-        <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
-        <sl-button variant="primary" type="submit">
-          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
-          Create
-        </sl-button>
-      </form>
-      <form id="adopt-session" class="stack">
-        <strong>Adopt Codex thread</strong>
-        <sl-input id="adopt-thread-id" name="threadId" placeholder="Codex thread ID" required size="small"></sl-input>
-        <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required size="small"></sl-input>
-        <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
-        <sl-button variant="primary" type="submit">
-          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
-          Adopt thread
-        </sl-button>
-      </form>
+      </sl-details>
       <div id="prompt-queue" class="stack"></div>
     </aside>
     <main class="main">
@@ -78,24 +82,23 @@
             <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
             Delete from Hub
           </sl-button>
+          <sl-switch id="notify" size="small" title="Notify when this session receives an assistant response">Notify</sl-switch>
         </div>
       </header>
-      <section class="approvals">
+      <section class="approvals" id="approvals">
         <div id="pending-approvals" class="stack"></div>
-        <sl-details summary="Approval history">
+        <sl-details id="approval-history-details" summary="Approval history">
           <div id="approval-history" class="stack"></div>
         </sl-details>
       </section>
       <section class="messages" id="messages"></section>
       <form id="composer" class="composer">
         <sl-textarea id="composer-text" name="text" placeholder="Message Codex through Hub" required resize="auto"></sl-textarea>
-        <div class="row">
-          <sl-button variant="primary" type="submit">
-            <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
-            Send
-          </sl-button>
-          <span class="muted" id="send-state"></span>
-        </div>
+        <sl-button variant="primary" type="submit">
+          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+          Send
+        </sl-button>
+        <span class="muted" id="send-state"></span>
       </form>
     </main>
   </div>

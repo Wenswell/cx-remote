@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { homedir } from 'node:os';
 import test from 'node:test';
 import { configureLogger } from '../src/logger.js';
 import {
@@ -277,6 +278,25 @@ test('session detail exposes latest event cursor for SSE bootstrap', async () =>
     assert.doesNotMatch(text, /"marker":"historical"/);
   } finally {
     abort.abort();
+    await closeTestHub(context);
+  }
+});
+
+test('status exposes browser bootstrap metadata', async () => {
+  const context = createTestApp();
+
+  try {
+    const session = createSession(context.store);
+    const event = context.store.addEvent({ type: 'session.updated', sessionId: session.id, payload: { marker: 'status' }, createdAt: 10 });
+
+    const status = await json<{ homePath: string; eventCursor: number }>(await context.app.request(
+      '/api/status',
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(status.homePath, homedir());
+    assert.equal(status.eventCursor, event.id);
+  } finally {
     await closeTestHub(context);
   }
 });

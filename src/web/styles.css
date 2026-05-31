@@ -91,6 +91,12 @@ sl-button:disabled {
   min-height: 0;
 }
 
+.side.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 .main {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
@@ -145,10 +151,13 @@ sl-button.session {
 sl-button.session::part(base) {
   width: 100%;
   height: auto;
+  min-height: 0;
   justify-content: flex-start;
+  align-items: flex-start;
   text-align: left;
   border-color: var(--line);
   background: var(--panel);
+  padding: 8px 10px;
 }
 
 sl-button.session.active::part(base) {
@@ -156,14 +165,39 @@ sl-button.session.active::part(base) {
 }
 
 sl-button.session::part(label) {
-  display: grid;
-  gap: 4px;
+  display: block;
   width: 100%;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.session-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   min-width: 0;
 }
 
 .session-name {
+  flex: 1 1 auto;
   font-weight: 650;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.session-path {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-tools {
+  padding-top: 10px;
 }
 
 .dir-list {
@@ -220,9 +254,9 @@ sl-button.dir-button::part(base) {
 
 .approvals {
   border-bottom: 1px solid var(--line);
-  padding: 12px 16px;
+  padding: 8px 16px;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 sl-details::part(base),
@@ -262,21 +296,40 @@ sl-details::part(base),
   background: var(--panel);
   padding: 10px 12px;
   max-width: 980px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+  display: grid;
+  gap: 6px;
+}
+
+.msg-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.msg-content {
+  white-space: pre-wrap;
 }
 
 .msg.user {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-left: 4px solid var(--accent);
+}
+
+.msg.assistant {
+  border-color: color-mix(in srgb, #15803d 38%, var(--line));
+  border-left: 4px solid #15803d;
 }
 
 .msg.tool {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   background: var(--code);
+  border-left: 4px solid var(--muted);
 }
 
 .msg.error {
   border-color: var(--danger);
+  border-left-color: var(--danger);
 }
 
 .msg.streaming {
@@ -288,7 +341,14 @@ sl-details::part(base),
   padding: 12px 16px;
   background: color-mix(in srgb, var(--bg) 85%, var(--panel));
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+  align-items: end;
+}
+
+.composer #send-state {
+  grid-column: 1 / -1;
+  min-height: 1em;
 }
 
 pre {
@@ -327,5 +387,13 @@ pre {
   .topbar {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .composer {
+    grid-template-columns: 1fr;
+  }
+
+  .composer #send-state {
+    grid-column: 1;
   }
 }

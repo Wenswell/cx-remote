@@ -126,11 +126,14 @@ GET    /api/events
 
 API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
 
+`GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
 `POST /api/sessions/adopt` accepts `threadId`, `cwd`, and optional `title`, then creates a Hub-managed session mapped to that native Codex thread. `codexThreadId` is unique in the Hub store.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
 `POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
+
+Web notification preferences are browser-local. The per-session notify switch stores enabled session ids in `localStorage`; while Web is open, a global SSE stream uses the standard browser Notification API when an assistant response is created for any enabled session.
 
 ## Control Ownership
 

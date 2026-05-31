@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
@@ -135,7 +136,9 @@ export class HubServer {
     app.get('/api/status', (c) => c.json({
       ok: true,
       settingsPath: this.config.settingsPath,
+      homePath: homedir(),
       workspaceRoots: this.config.workspace.roots,
+      eventCursor: this.hub.latestEventId(),
       server: {
         host: this.config.server.host,
         port: this.config.server.port,

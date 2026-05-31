@@ -142,7 +142,7 @@ export class ControlHub {
       messages: this.store.listMessages(session.id),
       approvals: this.store.listApprovals({ sessionId: session.id, status: 'pending' }),
       queue: this.store.listPromptJobs({ sessionId: session.id, statuses: ACTIVE_PROMPT_JOB_STATUSES, limit: 50 }),
-      eventCursor: this.store.latestEventId(session.id),
+      eventCursor: this.latestEventId(session.id),
     };
   }
 

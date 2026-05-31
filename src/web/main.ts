@@ -8,6 +8,7 @@ import '@shoelace-style/shoelace/dist/components/icon/icon.js';
 import '@shoelace-style/shoelace/dist/components/input/input.js';
 import '@shoelace-style/shoelace/dist/components/option/option.js';
 import '@shoelace-style/shoelace/dist/components/select/select.js';
+import '@shoelace-style/shoelace/dist/components/switch/switch.js';
 import '@shoelace-style/shoelace/dist/components/textarea/textarea.js';
 import { WEB_CONTROL_TTL_MS } from '../controls/control-actions.js';
 import './styles.css';
@@ -36,6 +37,7 @@ type Session = {
 
 type Message = {
   id: string;
+  sessionId: string;
   role: string;
   kind?: string;
   content: string;
@@ -86,6 +88,8 @@ type SessionDetail = {
 };
 
 type StatusResponse = {
+  homePath: string;
+  eventCursor: number;
   stats: {
     sessions: number;
     pendingApprovals: number;
@@ -111,6 +115,11 @@ type ButtonElement = HTMLElement & {
   disabled: boolean;
 };
 
+type ToggleElement = HTMLElement & {
+  checked: boolean;
+  disabled: boolean;
+};
+
 type DialogElement = HTMLElement & {
   show: () => Promise<void>;
   hide: () => Promise<void>;
@@ -122,6 +131,8 @@ type AlertElement = HTMLElement & {
 
 const tokenFromUrl = new URLSearchParams(location.search).get('token') || '';
 if (tokenFromUrl) clearTokenFromUrl();
+
+const notifyPrefsKey = 'cx_tg_notify_sessions';
 
 let clientId = localStorage.getItem('cx_tg_client_id');
 if (!clientId) {
@@ -141,10 +152,12 @@ const apiPath = {
   session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
   approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
   approvalResolve: (id: string) => `/api/approvals/${encodeURIComponent(id)}/resolve`,
-  events: (sessionId: string, afterId: number | undefined) => {
-    const params = new URLSearchParams({ sessionId });
+  events: (sessionId: string | undefined, afterId: number | undefined) => {
+    const params = new URLSearchParams();
+    if (sessionId) params.set('sessionId', sessionId);
     if (afterId) params.set('afterId', String(afterId));
-    return `/api/events?${params.toString()}`;
+    const query = params.toString();
+    return query ? `/api/events?${query}` : '/api/events';
   },
 };
 
@@ -158,9 +171,12 @@ let workspaces: Workspace[] = [];
 let currentSession: Session | null = null;
 let currentRoot = localStorage.getItem('cx_tg_root') || '';
 let currentPath = '';
+let homePath = '';
 let streamBuffer = '';
 let eventSource: EventSource | null = null;
 let eventSourceSessionId = '';
+let notificationEventSource: EventSource | null = null;
+let notificationEventCursor = 0;
 let pendingDeleteSessionId = '';
 const eventCursorBySession = new Map<string, number>();
 
@@ -198,6 +214,14 @@ function clearTokenFromUrl(): void {
   history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
+function displayPath(path: string): string {
+  return homePath && (path === homePath || path.startsWith(`${homePath}/`)) ? `~${path.slice(homePath.length)}` : path;
+}
+
+function truncateText(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
+}
+
 async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -222,6 +246,8 @@ async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
 async function loadAll(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
+  homePath = status.homePath;
+  rememberNotificationEventCursor(status.eventCursor);
   element('status').textContent = `${status.stats.sessions} managed sessions · ${status.stats.pendingApprovals} approvals · ${status.stats.queuedPrompts} queued`;
   await loadWorkspaces();
   sessions = await api<Session[]>(apiPath.sessions);
@@ -229,6 +255,7 @@ async function loadAll(): Promise<void> {
   if (!activeSessionId && sessions[0]) activeSessionId = sessions[0].id;
   renderSessions();
   await loadSession();
+  syncNotificationEvents();
 }
 
 async function loadWorkspaces(): Promise<void> {
@@ -320,6 +347,7 @@ function renderSessions(): void {
   for (const session of sessions) {
     const button = createButton('', {
       className: `session${session.id === activeSessionId ? ' active' : ''}`,
+      size: 'small',
       onClick: async () => {
         activeSessionId = session.id;
         localStorage.setItem('cx_tg_session', activeSessionId);
@@ -327,13 +355,16 @@ function renderSessions(): void {
         await loadSession();
       },
     });
+    const line = document.createElement('span');
+    line.className = 'session-line';
     const name = document.createElement('span');
     name.className = 'session-name';
     name.textContent = session.title;
+    line.append(name, statusBadge(session.status));
     const cwd = document.createElement('span');
-    cwd.className = 'muted';
-    cwd.textContent = session.cwd;
-    button.append(name, cwd, statusBadge(session.status));
+    cwd.className = 'session-path muted';
+    cwd.textContent = displayPath(session.cwd);
+    button.append(line, cwd);
     container.appendChild(button);
   }
 }
@@ -356,7 +387,7 @@ function renderSessionHeader(): void {
   if (!currentSession) return;
   const config = currentSession.config || {};
   element('session-title').textContent = currentSession.title;
-  element('session-meta').textContent = currentSession.cwd;
+  element('session-meta').textContent = displayPath(currentSession.cwd);
 
   const detail = element('session-detail');
   detail.innerHTML = '';
@@ -407,6 +438,10 @@ function renderActionState(): void {
 
   element<ButtonElement>('rename').disabled = !hasSession;
   element<ButtonElement>('delete').disabled = !hasSession;
+  const notify = element<ToggleElement>('notify');
+  notify.hidden = !hasSession;
+  notify.disabled = !hasSession;
+  notify.checked = Boolean(currentSession && sessionNotificationsEnabled(currentSession.id));
 
   const claim = element<ButtonElement>('claim');
   claim.hidden = !hasSession || isControlledByMe;
@@ -433,8 +468,7 @@ function renderMessages(): void {
 function messageNode(message: Message): HTMLElement {
   const div = document.createElement('div');
   div.className = `msg ${message.role}${message.kind === 'error' ? ' error' : ''}`;
-  const queued = message.metadata?.queued ? ' queued' : '';
-  div.textContent = `[${message.role}${queued}]\n${message.content}`;
+  div.append(messageMeta(message.role, Boolean(message.metadata?.queued)), messageContent(message.content));
   return div;
 }
 
@@ -442,7 +476,7 @@ function streamingNode(): HTMLElement {
   const div = document.createElement('div');
   div.id = 'streaming-message';
   div.className = 'msg assistant streaming';
-  div.textContent = `[assistant]\n${streamBuffer}`;
+  div.append(messageMeta('assistant', false), messageContent(streamBuffer));
   return div;
 }
 
@@ -453,28 +487,57 @@ function appendDelta(delta: string): void {
     div = streamingNode();
     element('messages').appendChild(div);
   } else {
-    div.textContent = `[assistant]\n${streamBuffer}`;
+    const content = div.querySelector('.msg-content');
+    if (content) content.textContent = streamBuffer;
   }
   const box = element('messages');
   box.scrollTop = box.scrollHeight;
 }
 
+function messageMeta(role: string, queued: boolean): HTMLElement {
+  const meta = document.createElement('div');
+  meta.className = 'msg-meta';
+  const badge = document.createElement('sl-badge');
+  badge.className = 'role-badge';
+  badge.setAttribute('variant', role === 'user' ? 'primary' : role === 'assistant' ? 'success' : 'neutral');
+  badge.textContent = role;
+  meta.appendChild(badge);
+  if (queued) {
+    const queuedBadge = document.createElement('sl-badge');
+    queuedBadge.className = 'role-badge';
+    queuedBadge.setAttribute('variant', 'neutral');
+    queuedBadge.textContent = 'queued';
+    meta.appendChild(queuedBadge);
+  }
+  return meta;
+}
+
+function messageContent(text: string): HTMLElement {
+  const content = document.createElement('div');
+  content.className = 'msg-content';
+  content.textContent = text;
+  return content;
+}
+
 function renderApprovals(): void {
+  const resolved = approvalHistory.filter((approval) => approval.status !== 'pending');
+  const section = element('approvals');
+  section.hidden = pendingApprovals.length === 0 && resolved.length === 0;
   renderApprovalList(element('pending-approvals'), pendingApprovals, true);
-  renderApprovalList(element('approval-history'), approvalHistory.filter((approval) => approval.status !== 'pending'), false);
+  const history = element('approval-history-details');
+  history.hidden = resolved.length === 0;
+  renderApprovalList(element('approval-history'), resolved, false);
 }
 
 function renderPromptQueue(): void {
   const container = element('prompt-queue');
   container.innerHTML = '';
+  container.hidden = promptQueue.length === 0;
+  if (!promptQueue.length) return;
   const title = document.createElement('div');
   title.className = 'muted';
   title.textContent = 'Prompt queue';
   container.appendChild(title);
-  if (!promptQueue.length) {
-    container.appendChild(emptyState('No active prompt jobs'));
-    return;
-  }
   promptQueue.forEach((job, index) => {
     const div = document.createElement('div');
     div.className = `queue-job ${job.status}`;
@@ -489,14 +552,12 @@ function renderPromptQueue(): void {
 
 function renderApprovalList(container: HTMLElement, approvals: Approval[], pending: boolean): void {
   container.innerHTML = '';
+  container.hidden = approvals.length === 0;
+  if (!approvals.length) return;
   const title = document.createElement('div');
   title.className = 'muted';
   title.textContent = pending ? 'Pending approvals' : 'Approval history';
   container.appendChild(title);
-  if (!approvals.length) {
-    container.appendChild(emptyState(pending ? 'No pending approvals' : 'No approval history'));
-    return;
-  }
   for (const approval of approvals) {
     const div = document.createElement('div');
     div.className = `approval${pending ? '' : ' resolved'}`;
@@ -539,10 +600,20 @@ function rememberEventCursor(sessionId: string, value: unknown): void {
   if (id > current) eventCursorBySession.set(sessionId, id);
 }
 
+function rememberNotificationEventCursor(value: unknown): void {
+  const id = Number(value);
+  if (Number.isFinite(id) && id > notificationEventCursor) notificationEventCursor = id;
+}
+
 function closeEvents(): void {
   if (eventSource) eventSource.close();
   eventSource = null;
   eventSourceSessionId = '';
+}
+
+function closeNotificationEvents(): void {
+  if (notificationEventSource) notificationEventSource.close();
+  notificationEventSource = null;
 }
 
 function connectEvents(sessionId: string): void {
@@ -584,6 +655,24 @@ function connectEvents(sessionId: string): void {
   eventSource.onerror = () => showError(new Error('Event stream disconnected'));
 }
 
+function syncNotificationEvents(): void {
+  const enabled = sessions.some((session) => sessionNotificationsEnabled(session.id));
+  if (!enabled || !('Notification' in window) || Notification.permission !== 'granted') {
+    closeNotificationEvents();
+    return;
+  }
+  if (notificationEventSource) return;
+  notificationEventSource = new EventSource(apiPath.events(undefined, notificationEventCursor), { withCredentials: true });
+  notificationEventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data) as HubEvent;
+    rememberNotificationEventCursor(event.lastEventId || data.id);
+    if (data.type !== 'message.created') return;
+    const message = data.payload?.message as Message | undefined;
+    if (message?.id) notifyAssistantMessage(message);
+  };
+  notificationEventSource.onerror = () => showError(new Error('Notification event stream disconnected'));
+}
+
 function createButton(
   label: string,
   options: {
@@ -606,7 +695,7 @@ function createButton(
     icon.setAttribute('name', options.icon);
     button.appendChild(icon);
   }
-  button.append(label);
+  if (label) button.append(label);
   button.addEventListener('click', () => run(Promise.resolve(options.onClick())));
   return button;
 }
@@ -623,6 +712,72 @@ function emptyState(text: string): HTMLElement {
   empty.className = 'muted';
   empty.textContent = text;
   return empty;
+}
+
+function notificationPrefs(): Record<string, boolean> {
+  try {
+    const value = JSON.parse(localStorage.getItem(notifyPrefsKey) || '{}') as unknown;
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, boolean> : {};
+  } catch {
+    return {};
+  }
+}
+
+function sessionNotificationsEnabled(sessionId: string): boolean {
+  return notificationPrefs()[sessionId] === true;
+}
+
+function setSessionNotifications(sessionId: string, enabled: boolean): void {
+  const prefs = notificationPrefs();
+  if (enabled) {
+    prefs[sessionId] = true;
+  } else {
+    delete prefs[sessionId];
+  }
+  localStorage.setItem(notifyPrefsKey, JSON.stringify(prefs));
+}
+
+async function ensureNotificationPermission(): Promise<void> {
+  if (!('Notification' in window)) throw new Error('Browser notifications are unavailable');
+  if (Notification.permission === 'granted') return;
+  if (Notification.permission === 'denied') throw new Error('Browser notifications are blocked');
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') throw new Error('Browser notification permission was not granted');
+}
+
+async function updateSessionNotifications(enabled: boolean): Promise<void> {
+  const sessionId = currentSession?.id;
+  if (!sessionId) return;
+  try {
+    if (enabled) {
+      await ensureNotificationPermission();
+      await refreshNotificationCursor();
+    }
+    setSessionNotifications(sessionId, enabled);
+  } finally {
+    renderActionState();
+    syncNotificationEvents();
+  }
+}
+
+function notifyAssistantMessage(message: Message): void {
+  if (message.role !== 'assistant' || !message.content.trim()) return;
+  if (!sessionNotificationsEnabled(message.sessionId)) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  new Notification(sessionTitle(message.sessionId), {
+    body: truncateText(message.content.trim(), 180),
+    tag: `cx-tg-${message.sessionId}`,
+  });
+}
+
+async function refreshNotificationCursor(): Promise<void> {
+  const status = await api<StatusResponse>(apiPath.status);
+  homePath = status.homePath;
+  rememberNotificationEventCursor(status.eventCursor);
+}
+
+function sessionTitle(sessionId: string): string {
+  return sessions.find((session) => session.id === sessionId)?.title || currentSession?.title || 'CX TG';
 }
 
 function setButtonLabel(button: HTMLElement, label: string): void {
@@ -685,6 +840,9 @@ element('rename').addEventListener('click', () => run((async () => {
 element('delete').addEventListener('click', () => {
   if (currentSession) showDeleteDialog(currentSession);
 });
+element<ToggleElement>('notify').addEventListener('sl-change', (event) => run((async () => {
+  await updateSessionNotifications((event.currentTarget as ToggleElement).checked);
+})()));
 element('delete-cancel').addEventListener('click', () => run(element<DialogElement>('delete-dialog').hide()));
 element('delete-confirm').addEventListener('click', () => run((async () => {
   if (!pendingDeleteSessionId) return;

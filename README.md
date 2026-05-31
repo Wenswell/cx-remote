@@ -87,6 +87,7 @@ The Web console can:
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename Hub sessions and delete them from the Hub store
 - cancel a running turn and queued prompts
+- enable browser notifications per Hub session for assistant responses while Web is open
 
 ## CLI
 
