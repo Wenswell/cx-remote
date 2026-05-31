@@ -47,6 +47,10 @@ export function webStyles(): string {
       border-color: var(--danger);
       color: var(--danger);
     }
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
     input, textarea, select {
       width: 100%;
       border: 1px solid var(--line);

@@ -40,11 +40,11 @@ export function webPage(): string {
           <div class="details" id="session-detail"></div>
         </div>
         <div class="row">
-          <button id="claim" type="button">Claim</button>
-          <button id="release" type="button">Release</button>
-          <button id="rename" type="button">Rename</button>
-          <button id="stop" type="button">Stop</button>
-          <button id="delete" class="danger" type="button">Delete</button>
+          <button id="claim" type="button" title="Take exclusive control for this browser">Take control</button>
+          <button id="release" type="button" title="Release this browser's exclusive control">Release control</button>
+          <button id="rename" type="button" title="Edit the session title">Edit title</button>
+          <button id="stop" type="button" title="Cancel the running turn and queued prompts">Cancel</button>
+          <button id="delete" class="danger" type="button" title="Delete this local session and its history">Delete session</button>
         </div>
       </header>
       <section class="approvals">

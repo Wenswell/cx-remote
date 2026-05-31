@@ -227,6 +227,27 @@ export function webScript(): string {
       renderMessages();
       renderPromptQueue();
       renderApprovals();
+      renderActionState();
+    }
+
+    function renderActionState() {
+      const hasSession = Boolean(currentSession);
+      const isControlledByMe = currentSession?.controlOwnerId === clientId;
+      const isControlledByOther = Boolean(currentSession?.controlOwnerId && !isControlledByMe);
+      const hasActiveWork = Boolean(currentSession && currentSession.status !== 'idle') || promptQueue.length > 0;
+
+      $('rename').disabled = !hasSession;
+      $('delete').disabled = !hasSession;
+
+      $('claim').hidden = !hasSession || isControlledByMe;
+      $('claim').disabled = !hasSession || isControlledByOther;
+      $('claim').textContent = isControlledByOther ? 'Controlled by ' + (currentSession.controlLabel || 'another client') : 'Take control';
+
+      $('release').hidden = !hasSession || !isControlledByMe;
+      $('release').disabled = !isControlledByMe;
+
+      $('stop').hidden = !hasSession || !hasActiveWork;
+      $('stop').disabled = !hasActiveWork;
     }
 
     function renderMessages() {

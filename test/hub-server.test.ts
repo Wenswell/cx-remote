@@ -229,6 +229,8 @@ test('web page loads split assets and client uses cookie event stream', () => {
 
   assert.match(page, /\/assets\/web\.css/);
   assert.match(page, /\/assets\/web\.js/);
+  assert.match(page, /Take control/);
+  assert.match(page, /Delete session/);
   assert.match(script, /new EventSource\(url, \{ withCredentials: true \}\)/);
   assert.doesNotMatch(script, /token=/);
   assert.match(script, /eventSourceSessionId === sessionId/);
@@ -236,4 +238,6 @@ test('web page loads split assets and client uses cookie event stream', () => {
   assert.match(script, /!messages\.some\(\(item\) => item\.id === message\.id\)/);
   assert.doesNotMatch(script, /event\.currentTarget\.reset\(\)/);
   assert.match(script, /const formElement = event\.currentTarget/);
+  assert.match(script, /function renderActionState\(\)/);
+  assert.match(script, /\$\('stop'\)\.hidden = !hasSession \|\| !hasActiveWork/);
 });

@@ -69,10 +69,10 @@ The Web console can:
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
 - keep one event stream per selected session and resume from the session event cursor
-- claim or release exclusive session control
+- take or release exclusive session control
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename and delete sessions
-- stop a running turn
+- cancel a running turn and queued prompts
 
 ## CLI
 
