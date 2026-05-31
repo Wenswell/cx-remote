@@ -121,6 +121,10 @@ function formatConsoleMeta(meta?: Record<string, unknown>, flags?: { prompt?: bo
     'cwd',
     'turnId',
     'error',
+    'method',
+    'path',
+    'status',
+    'durationMs',
   ];
 
   const pairs: string[] = [];

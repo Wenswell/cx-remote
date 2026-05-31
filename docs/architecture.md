@@ -94,6 +94,8 @@ The Hub API uses bearer auth and JSON errors:
 }
 ```
 
+Hub request logs include method, path, status, and duration. Query strings are omitted so access tokens are not written to logs.
+
 Main endpoints:
 
 ```text

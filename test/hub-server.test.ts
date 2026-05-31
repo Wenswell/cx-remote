@@ -10,6 +10,9 @@ import { EventBus } from '../src/runtime/event-bus.js';
 import { ControlHub } from '../src/runtime/control-hub.js';
 import { PermissionService } from '../src/runtime/permissions.js';
 import { Store } from '../src/store/store.js';
+import { configureLogger } from '../src/logger.js';
+
+configureLogger({ level: 'error', console: false, prompts: false });
 
 test('events endpoint replays stored events after a cursor', async () => {
   const dbPath = tempDbPath();
@@ -36,6 +39,7 @@ test('events endpoint replays stored events after a cursor', async () => {
     assert.match(text, new RegExp(`id: ${second.id}`));
     assert.match(text, /"marker":"second"/);
     assert.doesNotMatch(text, /"marker":"first"/);
+    assert.doesNotMatch(text, /payload_json/);
     assert.match(text, /"type":"ready"/);
   } finally {
     abort.abort();
@@ -71,11 +75,17 @@ test('session queue API lists active prompt jobs', async () => {
     assert.equal(queue[0]?.text, 'queued from api');
     assert.equal(queue[0]?.status, 'queued');
 
-    const detail = await json<{ queue: Array<{ text: string }> }>(await app.request(
+    const detail = await json<{
+      session: Record<string, unknown>;
+      messages: Array<Record<string, unknown>>;
+      queue: Array<{ text: string }>;
+    }>(await app.request(
       `/api/sessions/${encodeURIComponent(session.id)}`,
       { headers: authHeaders(config) },
     ));
     assert.equal(detail.queue[0]?.text, 'queued from api');
+    assert.equal('config_json' in detail.session, false);
+    assert.equal('metadata_json' in detail.messages[0]!, false);
   } finally {
     await hub.shutdown();
     store.close();

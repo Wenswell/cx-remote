@@ -612,29 +612,32 @@ function normalizeLimit(value: number | undefined, fallback: number): number {
 }
 
 function decodeSession(row: SessionRow): Session {
+  const { config_json, ...session } = row;
   return {
-    ...row,
+    ...session,
     controlOwner: row.controlOwner ?? null,
     controlOwnerId: row.controlOwnerId ?? null,
     controlLabel: row.controlLabel ?? null,
     controlLeaseExpiresAt: row.controlLeaseExpiresAt ?? null,
     controlUpdatedAt: row.controlUpdatedAt ?? null,
-    config: JSON.parse(row.config_json) as Session['config'],
+    config: JSON.parse(config_json) as Session['config'],
   };
 }
 
 function decodeMessage(row: MessageRow): Message {
+  const { metadata_json, ...message } = row;
   return {
-    ...row,
-    metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+    ...message,
+    metadata: JSON.parse(metadata_json) as Record<string, unknown>,
   };
 }
 
 function decodeApproval(row: ApprovalRow): Approval {
+  const { input_json, response_json, ...approval } = row;
   return {
-    ...row,
-    input: JSON.parse(row.input_json) as unknown,
-    response: row.response_json ? JSON.parse(row.response_json) as unknown : null,
+    ...approval,
+    input: JSON.parse(input_json) as unknown,
+    response: response_json ? JSON.parse(response_json) as unknown : null,
   };
 }
 
@@ -650,9 +653,10 @@ function decodePromptJob(row: PromptJobRow): PromptJob {
 }
 
 function decodeEvent(row: EventRow): HubEvent {
+  const { payload_json, ...event } = row;
   return {
-    ...row,
-    payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+    ...event,
+    payload: JSON.parse(payload_json) as Record<string, unknown>,
   };
 }
 

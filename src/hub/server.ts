@@ -82,6 +82,16 @@ export class HubServer {
   createApp(): Hono {
     const app = new Hono();
     app.use('*', cors());
+    app.use('*', async (c, next) => {
+      const startedAt = Date.now();
+      await next();
+      logger.info('http request', {
+        method: c.req.method,
+        path: c.req.path,
+        status: c.res.status,
+        durationMs: Date.now() - startedAt,
+      });
+    });
     app.onError((error, c) => {
       const status = errorStatus(error);
       logger.warn('api error', { status, error: error instanceof Error ? error.message : String(error) });
