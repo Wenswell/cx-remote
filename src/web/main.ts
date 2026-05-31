@@ -498,13 +498,13 @@ function messageMeta(role: string, queued: boolean): HTMLElement {
   const meta = document.createElement('div');
   meta.className = 'msg-meta';
   const badge = document.createElement('sl-badge');
-  badge.className = 'role-badge';
+  badge.className = 'role-badge role-main';
   badge.setAttribute('variant', role === 'user' ? 'primary' : role === 'assistant' ? 'success' : 'neutral');
   badge.textContent = role;
   meta.appendChild(badge);
   if (queued) {
     const queuedBadge = document.createElement('sl-badge');
-    queuedBadge.className = 'role-badge';
+    queuedBadge.className = 'role-badge queued-badge';
     queuedBadge.setAttribute('variant', 'neutral');
     queuedBadge.textContent = 'queued';
     meta.appendChild(queuedBadge);

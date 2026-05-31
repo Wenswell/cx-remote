@@ -6,6 +6,8 @@
   --muted: #686868;
   --line: #d7d7d2;
   --accent: #0f766e;
+  --user-accent: #2563eb;
+  --assistant-accent: #15803d;
   --danger: #b42318;
   --code: #f0f1ef;
   --sl-color-primary-600: #0f766e;
@@ -23,6 +25,8 @@
     --muted: #aaa9a4;
     --line: #363936;
     --accent: #2dd4bf;
+    --user-accent: #2563eb;
+    --assistant-accent: #15803d;
     --danger: #ff7468;
     --code: #282b29;
     --sl-color-neutral-0: #1d1f1e;
@@ -204,7 +208,21 @@ sl-button.session::part(label) {
 }
 
 .session-tools {
-  padding-top: 10px;
+  padding-top: 8px;
+}
+
+sl-details.session-details::part(base) {
+  border: 0;
+  background: transparent;
+}
+
+sl-details.session-details::part(header) {
+  min-height: 0;
+  padding: 0;
+}
+
+sl-details.session-details::part(content) {
+  padding: 10px 0 0;
 }
 
 .dir-list {
@@ -324,13 +342,23 @@ sl-details::part(base),
 }
 
 .msg.user {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  border-left: 4px solid var(--accent);
+  border-color: color-mix(in srgb, var(--user-accent) 45%, var(--line));
+  border-left: 4px solid var(--user-accent);
 }
 
 .msg.assistant {
-  border-color: color-mix(in srgb, #15803d 38%, var(--line));
-  border-left: 4px solid #15803d;
+  border-color: color-mix(in srgb, var(--assistant-accent) 38%, var(--line));
+  border-left: 4px solid var(--assistant-accent);
+}
+
+.msg.user .role-main::part(base) {
+  background: var(--user-accent);
+  color: #ffffff;
+}
+
+.msg.assistant .role-main::part(base) {
+  background: var(--assistant-accent);
+  color: #ffffff;
 }
 
 .msg.tool {
