@@ -7,14 +7,23 @@
   --line: #d7d7d2;
   --accent: #0f766e;
   --user-accent: #6b7280;
-  --assistant-accent: #1d4ed8;
+  --assistant-accent: var(--sl-color-primary-600);
   --danger: #b42318;
   --code: #f0f1ef;
-  --sl-color-primary-500: #0f766e;
+  --sl-color-primary-50: #f0fdfa;
+  --sl-color-primary-100: #ccfbf1;
+  --sl-color-primary-200: #99f6e4;
+  --sl-color-primary-300: #5eead4;
+  --sl-color-primary-400: #2dd4bf;
+  --sl-color-primary-500: #0d9488;
   --sl-color-primary-600: #0f766e;
   --sl-color-primary-700: #115e59;
   --sl-color-primary-800: #134e4a;
+  --sl-color-primary-900: #042f2e;
+  --sl-color-primary-950: #022c22;
   --sl-color-danger-600: #b42318;
+  --sl-focus-ring-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  --sl-input-border-color-focus: var(--accent);
   --sl-border-radius-medium: 6px;
   --sl-font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -26,9 +35,9 @@
     --text: #f0f0ed;
     --muted: #aaa9a4;
     --line: #363936;
-    --accent: #2dd4bf;
+    --accent: #0f766e;
     --user-accent: #6b7280;
-    --assistant-accent: #1d4ed8;
+    --assistant-accent: var(--sl-color-primary-600);
     --danger: #ff7468;
     --code: #282b29;
     --sl-color-neutral-0: #1d1f1e;
@@ -37,11 +46,20 @@
     --sl-color-neutral-200: #363936;
     --sl-color-neutral-700: #d5d3cc;
     --sl-color-neutral-900: #f0f0ed;
-    --sl-color-primary-500: #0f766e;
+    --sl-color-primary-50: #f0fdfa;
+    --sl-color-primary-100: #ccfbf1;
+    --sl-color-primary-200: #99f6e4;
+    --sl-color-primary-300: #5eead4;
+    --sl-color-primary-400: #2dd4bf;
+    --sl-color-primary-500: #0d9488;
     --sl-color-primary-600: #0f766e;
     --sl-color-primary-700: #0d5f5b;
     --sl-color-primary-800: #134e4a;
+    --sl-color-primary-900: #042f2e;
+    --sl-color-primary-950: #022c22;
     --sl-color-danger-600: #b42318;
+    --sl-focus-ring-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    --sl-input-border-color-focus: var(--accent);
   }
 }
 
@@ -83,6 +101,11 @@ sl-textarea::part(base) {
 
 sl-button:disabled {
   opacity: 0.55;
+}
+
+sl-button[variant="primary"],
+sl-button[variant="danger"] {
+  --sl-color-neutral-0: #ffffff;
 }
 
 .shell {
