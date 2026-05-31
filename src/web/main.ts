@@ -241,8 +241,6 @@ async function loadWorkspaces(): Promise<void> {
 
 function renderWorkspaceRoots(): void {
   const select = element<ValueElement>('workspace-root');
-  const staticRoot = element('workspace-root-static');
-  const staticRootText = element('workspace-root-static-text');
   select.innerHTML = '';
   for (const workspace of workspaces) {
     const option = document.createElement('sl-option');
@@ -251,14 +249,10 @@ function renderWorkspaceRoots(): void {
     select.appendChild(option);
   }
   if (workspaces.length === 1) {
-    const workspace = workspaces[0]!;
     select.hidden = true;
-    staticRoot.hidden = false;
-    staticRootText.textContent = `${workspace.name} · ${workspace.path}`;
     return;
   }
   select.hidden = false;
-  staticRoot.hidden = true;
   select.value = currentRoot;
 }
 
