@@ -173,6 +173,23 @@ sl-button.session::part(label) {
   background: color-mix(in srgb, var(--panel) 70%, var(--bg));
 }
 
+.workspace-root-static {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--panel) 78%, var(--bg));
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.path-line {
+  overflow-wrap: anywhere;
+}
+
 sl-button.dir-button {
   width: 100%;
 }

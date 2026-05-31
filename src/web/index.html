@@ -22,7 +22,11 @@
       <div id="sessions" class="stack"></div>
       <form id="new-session" class="stack">
         <strong>New session</strong>
-        <sl-select id="workspace-root" size="small"></sl-select>
+        <sl-select id="workspace-root" label="Workspace root" size="small"></sl-select>
+        <div id="workspace-root-static" class="workspace-root-static" hidden>
+          <div class="field-label">Workspace root</div>
+          <div id="workspace-root-static-text" class="path-line"></div>
+        </div>
         <div class="row">
           <sl-button id="root-dir" type="button" size="small">
             <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
