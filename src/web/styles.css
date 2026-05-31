@@ -46,6 +46,7 @@
 }
 
 body {
+  height: 100%;
   margin: 0;
   font: 14px/1.45 var(--sl-font-sans);
   background: var(--bg);
@@ -79,7 +80,7 @@ sl-button:disabled {
 .shell {
   display: grid;
   grid-template-columns: minmax(270px, 360px) minmax(0, 1fr);
-  height: 100vh;
+  height: 100dvh;
   min-height: 0;
   overflow: hidden;
 }
@@ -100,13 +101,19 @@ sl-button:disabled {
 .main {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "topbar"
+    "approvals"
+    "messages"
+    "composer";
   min-width: 0;
   min-height: 0;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
 .topbar {
+  grid-area: topbar;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -253,6 +260,7 @@ sl-button.dir-button::part(base) {
 }
 
 .approvals {
+  grid-area: approvals;
   border-bottom: 1px solid var(--line);
   padding: 8px 16px;
   display: grid;
@@ -283,28 +291,32 @@ sl-details::part(base),
 }
 
 .messages {
-  padding: 16px;
-  overflow: auto;
+  grid-area: messages;
+  padding: 22px 16px 16px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
   min-height: 0;
 }
 
 .msg {
+  position: relative;
   border: 1px solid var(--line);
   background: var(--panel);
-  padding: 10px 12px;
+  padding: 12px;
   max-width: 980px;
   overflow-wrap: anywhere;
-  display: grid;
-  gap: 6px;
 }
 
 .msg-meta {
+  position: absolute;
+  top: -10px;
+  left: 10px;
   display: flex;
   gap: 6px;
   align-items: center;
+  line-height: 1;
 }
 
 .msg-content {
@@ -337,6 +349,7 @@ sl-details::part(base),
 }
 
 .composer {
+  grid-area: composer;
   border-top: 1px solid var(--line);
   padding: 12px 16px;
   background: color-mix(in srgb, var(--bg) 85%, var(--panel));
@@ -372,16 +385,18 @@ pre {
   .shell {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(180px, 42vh) minmax(0, 1fr);
+    height: 100dvh;
   }
 
   .side {
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    height: auto;
+    min-height: 0;
   }
 
   .main {
-    height: auto;
+    height: 100%;
+    min-height: 0;
   }
 
   .topbar {
