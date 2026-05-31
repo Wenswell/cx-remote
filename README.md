@@ -57,6 +57,8 @@ Open:
 http://127.0.0.1:3030/?token=<access-token>
 ```
 
+The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
+
 The Web console can:
 
 - create sessions from configured workspace roots
@@ -70,7 +72,7 @@ The Web console can:
 - claim or release exclusive session control
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
 - rename and delete sessions
-- interrupt a running turn
+- stop a running turn
 
 ## CLI
 

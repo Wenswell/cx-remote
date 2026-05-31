@@ -223,23 +223,16 @@ export class Store {
 
   listApprovals(query: ApprovalQuery = {}): Approval[] {
     const limit = normalizeLimit(query.limit, 100);
-    const clauses: string[] = [];
-    const params: SqlValue[] = [];
-    if (query.sessionId) {
-      clauses.push('sessionId = ?');
-      params.push(query.sessionId);
-    }
-    if (query.status) {
-      clauses.push('status = ?');
-      params.push(query.status);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const where = buildWhere([
+      equalClause('sessionId', query.sessionId),
+      equalClause('status', query.status),
+    ]);
     const rows = this.db.prepare(`
       SELECT * FROM approvals
-      ${where}
+      ${where.sql}
       ORDER BY createdAt DESC
       LIMIT ?
-    `).all(...params, limit) as ApprovalRow[];
+    `).all(...where.params, limit) as ApprovalRow[];
     return rows.map(decodeApproval);
   }
 
@@ -301,24 +294,17 @@ export class Store {
 
   listPromptJobs(query: PromptJobQuery = {}): PromptJob[] {
     const limit = normalizeLimit(query.limit, 200);
-    const clauses: string[] = [];
-    const params: SqlValue[] = [];
-    if (query.sessionId) {
-      clauses.push('sessionId = ?');
-      params.push(query.sessionId);
-    }
     const statuses = uniqueStatuses(query.statuses);
-    if (statuses.length > 0) {
-      clauses.push(`status IN (${statuses.map(() => '?').join(', ')})`);
-      params.push(...statuses);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const where = buildWhere([
+      equalClause('sessionId', query.sessionId),
+      inClause('status', statuses),
+    ]);
     const rows = this.db.prepare(`
       SELECT * FROM prompt_jobs
-      ${where}
+      ${where.sql}
       ORDER BY createdAt ASC, rowid ASC
       LIMIT ?
-    `).all(...params, limit) as unknown as PromptJobRow[];
+    `).all(...where.params, limit) as unknown as PromptJobRow[];
     return rows.map(decodePromptJob);
   }
 
@@ -477,16 +463,14 @@ export class Store {
   countPromptJobs(statuses: PromptJobStatus[], sessionId?: string): number {
     const targets = uniqueStatuses(statuses);
     if (targets.length === 0) return 0;
-    const clauses = [`status IN (${targets.map(() => '?').join(', ')})`];
-    const params: SqlValue[] = [...targets];
-    if (sessionId) {
-      clauses.push('sessionId = ?');
-      params.push(sessionId);
-    }
+    const where = buildWhere([
+      inClause('status', targets),
+      equalClause('sessionId', sessionId),
+    ]);
     const row = this.db.prepare(`
       SELECT COUNT(*) AS count FROM prompt_jobs
-      WHERE ${clauses.join(' AND ')}
-    `).get(...params) as { count: number };
+      ${where.sql}
+    `).get(...where.params) as { count: number };
     return Number(row.count);
   }
 
@@ -616,6 +600,29 @@ function normalizeLimit(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   if (!Number.isFinite(value)) return fallback;
   return Math.min(Math.max(Math.trunc(value), 1), 1000);
+}
+
+type WhereClause = {
+  sql: string;
+  params: SqlValue[];
+} | null;
+
+function equalClause(column: string, value: SqlValue | undefined): WhereClause {
+  return value === undefined ? null : { sql: `${column} = ?`, params: [value] };
+}
+
+function inClause(column: string, values: SqlValue[]): WhereClause {
+  return values.length === 0
+    ? null
+    : { sql: `${column} IN (${values.map(() => '?').join(', ')})`, params: values };
+}
+
+function buildWhere(clauses: WhereClause[]): { sql: string; params: SqlValue[] } {
+  const active = clauses.filter((clause): clause is NonNullable<WhereClause> => clause !== null);
+  return {
+    sql: active.length ? `WHERE ${active.map((clause) => clause.sql).join(' AND ')}` : '',
+    params: active.flatMap((clause) => clause.params),
+  };
 }
 
 function decodeSession(row: SessionRow): Session {

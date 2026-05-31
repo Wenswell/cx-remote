@@ -8,7 +8,10 @@ import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSett
 import { findSettingField } from '../config/fields.js';
 import type { PromptJobStatus } from '../domain/types.js';
 import { ControlHub } from '../runtime/control-hub.js';
+import { encodeSseFrame } from '../runtime/sse.js';
 import { webPage } from '../web/page.js';
+import { webScript } from '../web/script.js';
+import { webStyles } from '../web/styles.js';
 import { logger } from '../logger.js';
 
 const createSessionSchema = z.object({
@@ -32,6 +35,7 @@ const updateSessionSchema = z.object({
 
 const resolveApprovalSchema = z.object({
   decision: z.string().min(1),
+  controlType: controlTypeSchema.default('web'),
 });
 
 const approvalStatusSchema = z.enum(['pending', 'resolved', 'expired']);
@@ -48,6 +52,8 @@ const updateSettingSchema = z.object({
   key: z.string().min(1),
   value: z.unknown(),
 });
+
+const WEB_AUTH_COOKIE = 'cx_tg_auth';
 
 export class HubServer {
   private server: ServerType | null = null;
@@ -100,17 +106,19 @@ export class HubServer {
     app.notFound((c) => c.json({ error: { message: 'Not found' } }, 404));
 
     app.use('/api/*', async (c, next) => {
-      if (c.req.path === '/api/events' && c.req.query('token') === this.config.server.accessToken) {
-        await next();
-        return;
-      }
-      if (!isAuthorized(c.req.header('authorization'), this.config.server.accessToken)) {
+      if (!isAuthorizedRequest(c.req.header('authorization'), c.req.header('cookie'), this.config.server.accessToken)) {
         return c.json({ error: { message: 'Unauthorized' } }, 401);
       }
       await next();
     });
 
     app.get('/', (c) => c.html(webPage()));
+    app.get('/assets/web.css', (c) => c.text(webStyles(), 200, { 'Content-Type': 'text/css; charset=utf-8' }));
+    app.get('/assets/web.js', (c) => c.text(webScript(), 200, { 'Content-Type': 'application/javascript; charset=utf-8' }));
+    app.post('/api/auth', (c) => {
+      c.header('Set-Cookie', authCookie(this.config.server.accessToken, isSecureCookie(this.config.server.publicUrl)));
+      return c.json({ ok: true });
+    });
     app.get('/api/health', (c) => c.json({ ok: true, name: 'cx-tg' }));
     app.get('/api/status', (c) => c.json({
       ok: true,
@@ -195,16 +203,7 @@ export class HubServer {
       return c.json(session, 201);
     });
 
-    app.get('/api/sessions/:id', (c) => {
-      const session = this.hub.getSession(c.req.param('id'));
-      return c.json({
-        session,
-        messages: this.hub.listMessages(session.id),
-        approvals: this.hub.listApprovals({ sessionId: session.id, status: 'pending' }),
-        queue: this.hub.listPromptJobs(session.id, { statuses: ['running', 'queued'], limit: 50 }),
-        eventCursor: this.hub.latestEventId(session.id),
-      });
-    });
+    app.get('/api/sessions/:id', (c) => c.json(this.hub.getSessionDetail(c.req.param('id'))));
 
     app.patch('/api/sessions/:id', async (c) => {
       const input = updateSessionSchema.parse(await c.req.json());
@@ -270,30 +269,18 @@ export class HubServer {
 
     app.post('/api/approvals/:id/resolve', async (c) => {
       const input = resolveApprovalSchema.parse(await c.req.json());
-      await this.hub.resolveApproval(c.req.param('id'), input.decision, 'web');
+      await this.hub.resolveApproval(c.req.param('id'), input.decision, input.controlType);
       return c.json({ ok: true });
     });
 
     app.get('/api/bindings', (c) => c.json(this.hub.listBindings()));
     app.get('/api/events', (c) => {
-      const token = c.req.query('token');
-      if (token !== this.config.server.accessToken) return c.text('Unauthorized', 401);
       const sessionId = c.req.query('sessionId') || undefined;
-      const afterId = parseEventId(c.req.query('afterId') || c.req.header('last-event-id'));
+      const afterId = parseEventId(c.req.header('last-event-id') || c.req.query('afterId'));
       const stream = new ReadableStream({
         start: (controller) => {
           const encoder = new TextEncoder();
-          const send = (data: unknown) => {
-            const id = typeof data === 'object' && data !== null && 'id' in data
-              ? Number((data as { id?: unknown }).id)
-              : undefined;
-            const frame = [
-              ...(id !== undefined && Number.isFinite(id) && id > 0 ? [`id: ${id}`] : []),
-              `data: ${JSON.stringify(data)}`,
-              '',
-            ].join('\n');
-            controller.enqueue(encoder.encode(`${frame}\n`));
-          };
+          const send = (data: unknown) => controller.enqueue(encoder.encode(encodeSseFrame(data)));
           for (const event of this.hub.listEvents(afterId, sessionId)) {
             send(event);
           }
@@ -325,9 +312,31 @@ export class HubServer {
   }
 }
 
-function isAuthorized(header: string | undefined, token: string): boolean {
-  if (!header) return false;
-  return header === `Bearer ${token}`;
+function isAuthorizedRequest(authorization: string | undefined, cookie: string | undefined, token: string): boolean {
+  return authorization === `Bearer ${token}` || authCookieValue(cookie) === token;
+}
+
+function authCookieValue(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(';')) {
+    const [name, ...value] = part.trim().split('=');
+    if (name === WEB_AUTH_COOKIE) return decodeURIComponent(value.join('='));
+  }
+  return undefined;
+}
+
+function authCookie(token: string, secure: boolean): string {
+  return [
+    `${WEB_AUTH_COOKIE}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'SameSite=Strict',
+    'Path=/',
+    ...(secure ? ['Secure'] : []),
+  ].join('; ');
+}
+
+function isSecureCookie(publicUrl: string): boolean {
+  return publicUrl.startsWith('https://');
 }
 
 function parseLimit(value: string | undefined, fallback: number): number {
@@ -340,8 +349,8 @@ function parseLimit(value: string | undefined, fallback: number): number {
 function parseEventId(value: string | undefined): number {
   if (!value) return 0;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(Math.trunc(parsed), 0);
+  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) throw new Error('afterId must be a non-negative integer');
+  return parsed;
 }
 
 function promptJobStatuses(value: z.infer<typeof promptJobStatusSchema>): PromptJobStatus[] | undefined {

@@ -100,6 +100,7 @@ Main endpoints:
 
 ```text
 GET    /api/status
+POST   /api/auth
 GET    /api/workspaces
 GET    /api/files
 GET    /api/sessions
@@ -120,9 +121,12 @@ PATCH  /api/settings
 GET    /api/events
 ```
 
+API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
+
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
-`GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. The server replays stored events after the cursor, then keeps the SSE connection open for live events.
+`GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
+`POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
 
 ## Control Ownership
 

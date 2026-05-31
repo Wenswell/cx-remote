@@ -6,6 +6,7 @@ import { ControlHub } from '../runtime/control-hub.js';
 import type { Approval, HubEvent, Message, Session } from '../domain/types.js';
 import { escapeHtml } from '../utils.js';
 import { logger } from '../logger.js';
+import { formatControlClaimed, formatControlReleased, formatStopSent } from './control-actions.js';
 
 const commands = [
   { command: 'start', description: 'Show CX TG help' },
@@ -18,7 +19,7 @@ const commands = [
   { command: 'release', description: 'Release current session control' },
   { command: 'current', description: 'Show current bound session' },
   { command: 'approvals', description: 'List pending approvals' },
-  { command: 'stop', description: 'Interrupt current session' },
+  { command: 'stop', description: 'Stop current session' },
   { command: 'help', description: 'Show commands' },
 ] as const;
 
@@ -124,14 +125,14 @@ export class TelegramControl {
     if (text === '/claim') {
       const session = this.boundSession(key);
       this.hub.claimControl(session.id, { controlType: 'telegram', ownerId: owner.id, label: owner.label });
-      await this.send(target, `Control claimed:\n${session.title}`);
+      await this.send(target, formatControlClaimed(session.title));
       return;
     }
 
     if (text === '/release') {
       const session = this.boundSession(key);
       this.hub.releaseControl(session.id, owner.id);
-      await this.send(target, `Control released:\n${session.title}`);
+      await this.send(target, formatControlReleased(session.title));
       return;
     }
 
@@ -154,7 +155,7 @@ export class TelegramControl {
     if (text === '/stop') {
       const session = this.boundSession(key);
       await this.hub.interrupt(session.id);
-      await this.send(target, 'Interrupt sent.');
+      await this.send(target, formatStopSent());
       return;
     }
 
@@ -295,7 +296,7 @@ function helpText(webUrl: string): string {
     '/current - show current session',
     '/approvals - list pending approvals',
     '/status - show status',
-    '/stop - interrupt current session',
+    '/stop - stop current session',
     '/help - show help',
     '',
     `Web: ${webUrl}`,

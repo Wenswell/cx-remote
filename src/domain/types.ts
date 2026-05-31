@@ -108,6 +108,14 @@ export interface HubEvent {
   createdAt: number;
 }
 
+export interface SessionDetail {
+  session: Session;
+  messages: Message[];
+  approvals: Approval[];
+  queue: PromptJob[];
+  eventCursor: number;
+}
+
 export type ApprovalDecision = 'approved' | 'approved_for_session' | 'denied' | 'abort';
 
 export interface ApprovalResult {

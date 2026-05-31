@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { Approval, CodexEvent, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
+import type { Approval, CodexEvent, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session, SessionDetail } from '../domain/types.js';
 import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
@@ -30,6 +30,7 @@ type ControlSourceInput = {
 
 const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
 const INTERRUPTED_RESTART_ERROR = 'Hub restarted before the Codex turn finished';
+const ACTIVE_PROMPT_JOB_STATUSES: PromptJobStatus[] = ['running', 'queued'];
 
 export class ControlHub {
   private readonly runtimes = new Map<string, RuntimeEntry>();
@@ -106,6 +107,17 @@ export class ControlHub {
 
   listSessions(): Session[] {
     return this.store.listSessions();
+  }
+
+  getSessionDetail(sessionId: string): SessionDetail {
+    const session = this.getSession(sessionId);
+    return {
+      session,
+      messages: this.store.listMessages(session.id),
+      approvals: this.store.listApprovals({ sessionId: session.id, status: 'pending' }),
+      queue: this.store.listPromptJobs({ sessionId: session.id, statuses: ACTIVE_PROMPT_JOB_STATUSES, limit: 50 }),
+      eventCursor: this.store.latestEventId(session.id),
+    };
   }
 
   listMessages(sessionId: string, query: number | MessageQuery = 200): Message[] {

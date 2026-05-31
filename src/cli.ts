@@ -6,6 +6,8 @@ import { loadConfig } from './config/config.js';
 import { runSetup } from './cli/setup.js';
 import { runDoctor } from './cli/doctor.js';
 import { runConfigCommand } from './cli/config.js';
+import { decodeSseFrame } from './runtime/sse.js';
+import { CLI_CONTROL_TTL_MS, cliControlIdentity } from './controls/control-actions.js';
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
@@ -130,7 +132,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       const approvalId = argv[1];
       const decision = argv[2] ?? 'approved';
       if (!approvalId) throw new Error('Usage: cx-tg approve <approval-id> [approved|denied|approved_for_session]');
-      console.log(JSON.stringify(await client.post(`/api/approvals/${encodeURIComponent(approvalId)}/resolve`, { decision }), null, 2));
+      console.log(JSON.stringify(await client.post(`/api/approvals/${encodeURIComponent(approvalId)}/resolve`, { decision, controlType: 'cli' }), null, 2));
       return;
     }
     default:
@@ -196,7 +198,7 @@ class ApiClient {
   }
 
   streamEvents(sessionId: string, onEvent: (event: Record<string, unknown>) => void, onError: (error: Error) => void): () => void {
-    const path = `/api/events?sessionId=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(this.token)}`;
+    const path = `/api/events?sessionId=${encodeURIComponent(sessionId)}`;
     let buffer = '';
     const req = request({
       host: this.host,
@@ -218,7 +220,12 @@ class ApiClient {
         while (index >= 0) {
           const frame = buffer.slice(0, index);
           buffer = buffer.slice(index + 2);
-          handleSseFrame(frame, onEvent, onError);
+          try {
+            const event = decodeSseFrame(frame);
+            if (event) onEvent(event);
+          } catch (error) {
+            onError(error instanceof Error ? error : new Error(String(error)));
+          }
           index = buffer.indexOf('\n\n');
         }
       });
@@ -257,32 +264,17 @@ function parseErrorMessage(text: string): string {
   }
 }
 
-function handleSseFrame(frame: string, onEvent: (event: Record<string, unknown>) => void, onError: (error: Error) => void): void {
-  const data = frame.split('\n')
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice('data:'.length).trimStart())
-    .join('\n');
-  if (!data) return;
-  try {
-    onEvent(JSON.parse(data) as Record<string, unknown>);
-  } catch (error) {
-    onError(error instanceof Error ? error : new Error(String(error)));
-  }
-}
-
 function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknown) => string): void {
   console.log(json ? JSON.stringify(value, null, 2) : formatter(value));
 }
 
 async function attachSession(client: ApiClient, sessionId: string, claimExclusive: boolean): Promise<void> {
-  const ownerId = `cli:${hostname()}:${process.pid}`;
-  const controlLabel = `CLI ${hostname()}:${process.pid}`;
-  const ttlMs = 30_000;
+  const control = cliControlIdentity(hostname(), process.pid);
   const claim = () => client.patch(`/api/sessions/${encodeURIComponent(sessionId)}/control`, {
     controlType: 'cli',
-    ownerId,
-    controlLabel,
-    ttlMs,
+    ownerId: control.ownerId,
+    controlLabel: control.label,
+    ttlMs: CLI_CONTROL_TTL_MS,
   });
 
   if (claimExclusive) await claim();
@@ -324,7 +316,7 @@ async function attachSession(client: ApiClient, sessionId: string, claimExclusiv
           rl.close();
           return;
         }
-        await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, controlType: 'cli', ownerId, controlLabel });
+        await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, controlType: 'cli', ownerId: control.ownerId, controlLabel: control.label });
         prompt();
       })().catch((error) => {
         console.error(error instanceof Error ? error.message : String(error));
@@ -341,7 +333,7 @@ async function attachSession(client: ApiClient, sessionId: string, claimExclusiv
     closed = true;
     if (heartbeat) clearInterval(heartbeat);
     stopStream();
-    if (claimExclusive) await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}/control?ownerId=${encodeURIComponent(ownerId)}`).catch(() => {});
+    if (claimExclusive) await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}/control?ownerId=${encodeURIComponent(control.ownerId)}`).catch(() => {});
   }
 }
 
@@ -474,7 +466,7 @@ function printHelp(): void {
     '  cx-tg send <session-id> <text>    Send message',
     '  cx-tg attach <session-id>         Attach shared CLI to a session',
     '  cx-tg attach <session-id> --claim Attach with exclusive control',
-    '  cx-tg stop <session-id>           Interrupt session',
+    '  cx-tg stop <session-id>           Stop session',
     '  cx-tg rename <session-id> <title> Rename session',
     '  cx-tg delete <session-id>         Delete session',
     '  cx-tg approvals [--all]           List approvals',
