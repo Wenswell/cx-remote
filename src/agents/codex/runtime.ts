@@ -25,6 +25,7 @@ export class CodexRuntime {
   private turnDone: { promise: Promise<void>; resolve: () => void } | null = null;
   private ready = false;
   private running = false;
+  private threadLoaded = false;
   private threadId: string | null;
   private turnId: string | null;
 
@@ -35,6 +36,7 @@ export class CodexRuntime {
       bin: options.bin,
       search: options.session.config.search,
       bypassApprovalsAndSandbox: options.session.config.bypassApprovalsAndSandbox,
+      onDisconnect: () => this.handleDisconnect(),
     });
   }
 
@@ -86,6 +88,7 @@ export class CodexRuntime {
     await this.client.disconnect();
     this.ready = false;
     this.running = false;
+    this.threadLoaded = false;
     logger.info('codex runtime stopped', { sessionKey: this.options.session.id });
   }
 
@@ -109,21 +112,25 @@ export class CodexRuntime {
       await this.start();
       if (!this.threadId) {
         const response = await this.client.startThread({
-          cwd: this.options.session.cwd,
-          approvalPolicy: this.options.session.config.approvalPolicy,
-          sandbox: this.options.session.config.sandbox,
-          model: emptyToUndefined(this.options.session.config.model),
-          config: {
-            ...(this.options.session.config.reasoningEffort ? { model_reasoning_effort: this.options.session.config.reasoningEffort } : {}),
-          },
+          ...this.threadParams(),
         });
-        this.threadId = extractThreadId(response);
+        this.threadId = extractThreadId(response) ?? this.threadId;
         if (this.threadId) this.options.onThread(this.threadId);
+        this.threadLoaded = true;
+      } else if (!this.threadLoaded) {
+        const response = await this.client.resumeThread({
+          threadId: this.threadId,
+          ...this.threadParams(),
+        });
+        this.threadId = extractThreadId(response) ?? this.threadId;
+        if (this.threadId) this.options.onThread(this.threadId);
+        this.threadLoaded = true;
       }
 
       if (!this.threadId) throw new Error('Codex did not return a thread id');
 
-      this.turnDone = createTurnDone();
+      const turnDone = createTurnDone();
+      this.turnDone = turnDone;
       const response = await this.client.startTurn({
         threadId: this.threadId,
         cwd: this.options.session.cwd,
@@ -135,7 +142,7 @@ export class CodexRuntime {
       }, signal);
       this.turnId = extractTurnId(response) ?? this.turnId;
       this.options.onTurn(this.turnId);
-      await this.turnDone.promise;
+      await turnDone.promise;
     } finally {
       this.turnDone?.resolve();
       this.turnDone = null;
@@ -148,6 +155,7 @@ export class CodexRuntime {
   private handleEvent(event: CodexEvent): void {
     if (event.type === 'thread_started') {
       this.threadId = asString(event.thread_id) ?? this.threadId;
+      this.threadLoaded = true;
       if (this.threadId) this.options.onThread(this.threadId);
     }
     if (event.type === 'task_started') {
@@ -161,6 +169,26 @@ export class CodexRuntime {
       this.turnDone = null;
     }
     this.options.onEvent(event);
+  }
+
+  private handleDisconnect(): void {
+    this.ready = false;
+    this.running = false;
+    this.threadLoaded = false;
+    this.turnDone?.resolve();
+    this.turnDone = null;
+  }
+
+  private threadParams(): Record<string, unknown> {
+    return {
+      cwd: this.options.session.cwd,
+      approvalPolicy: this.options.session.config.approvalPolicy,
+      sandbox: this.options.session.config.sandbox,
+      model: emptyToUndefined(this.options.session.config.model),
+      config: {
+        ...(this.options.session.config.reasoningEffort ? { model_reasoning_effort: this.options.session.config.reasoningEffort } : {}),
+      },
+    };
   }
 }
 

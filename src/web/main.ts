@@ -136,6 +136,7 @@ const apiPath = {
   status: '/api/status',
   workspaces: '/api/workspaces',
   sessions: '/api/sessions',
+  adoptSession: '/api/sessions/adopt',
   files: (root: string, path: string) => `/api/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
   session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
   approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
@@ -221,7 +222,7 @@ async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
 
 async function loadAll(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
-  element('status').textContent = `${status.stats.sessions} sessions · ${status.stats.pendingApprovals} approvals · ${status.stats.queuedPrompts} queued`;
+  element('status').textContent = `${status.stats.sessions} managed sessions · ${status.stats.pendingApprovals} approvals · ${status.stats.queuedPrompts} queued`;
   await loadWorkspaces();
   sessions = await api<Session[]>(apiPath.sessions);
   if (activeSessionId && !sessions.some((session) => session.id === activeSessionId)) activeSessionId = '';
@@ -261,6 +262,7 @@ async function loadDirs(path: string): Promise<void> {
   const data = await api<DirectoryListing>(apiPath.files(currentRoot, path));
   currentPath = data.relativePath || '';
   element<ValueElement>('cwd').value = data.current;
+  element<ValueElement>('adopt-cwd').value = data.current;
   renderDirs(data);
 }
 
@@ -338,8 +340,8 @@ function renderSessions(): void {
 
 function renderSession(): void {
   if (!currentSession) {
-    element('session-title').textContent = 'No session';
-    element('session-meta').textContent = 'Create or select a session.';
+    element('session-title').textContent = 'No Hub session';
+    element('session-meta').textContent = 'Create a managed session or adopt an existing Codex thread.';
     element('session-detail').innerHTML = '';
   } else {
     renderSessionHeader();
@@ -370,9 +372,9 @@ function renderSessionHeader(): void {
   detail.appendChild(chips);
 
   const runtime = [
-    ['id', shortId(currentSession.id)],
-    ['thread', shortId(currentSession.codexThreadId)],
-    ['turn', shortId(currentSession.currentTurnId)],
+    ['Hub session', shortId(currentSession.id)],
+    ['Codex thread', shortId(currentSession.codexThreadId)],
+    ['Codex turn', shortId(currentSession.currentTurnId)],
     ['lease', currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleTimeString() : ''],
     ['error', currentSession.lastError || ''],
   ].filter(([, value]) => value);
@@ -632,7 +634,7 @@ function setButtonLabel(button: HTMLElement, label: string): void {
 
 function showDeleteDialog(session: Session): void {
   pendingDeleteSessionId = session.id;
-  element('delete-dialog-message').textContent = `Delete session ${session.title}?`;
+  element('delete-dialog-message').textContent = `Delete Hub session ${session.title}?`;
   run(element<DialogElement>('delete-dialog').show());
 }
 
@@ -705,6 +707,22 @@ element<HTMLFormElement>('new-session').addEventListener('submit', (event) => ru
   activeSessionId = session.id;
   localStorage.setItem('cx_tg_session', activeSessionId);
   formElement.reset();
+  await loadAll();
+})()));
+element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => run((async () => {
+  event.preventDefault();
+  const formElement = event.currentTarget as HTMLFormElement;
+  const threadId = element<ValueElement>('adopt-thread-id').value.trim();
+  const cwd = element<ValueElement>('adopt-cwd').value.trim();
+  const title = element<ValueElement>('adopt-title').value.trim();
+  const session = await api<Session>(apiPath.adoptSession, {
+    method: 'POST',
+    body: JSON.stringify({ threadId, cwd, title }),
+  });
+  activeSessionId = session.id;
+  localStorage.setItem('cx_tg_session', activeSessionId);
+  formElement.reset();
+  element<ValueElement>('adopt-cwd').value = element<ValueElement>('cwd').value;
   await loadAll();
 })()));
 element<HTMLFormElement>('composer').addEventListener('submit', (event) => run((async () => {

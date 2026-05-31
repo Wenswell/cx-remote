@@ -88,6 +88,14 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       console.log(JSON.stringify(await client.post('/api/sessions', { cwd, title }), null, 2));
       return;
     }
+    case 'adopt': {
+      const threadId = valueAfter(argv, '--thread') ?? positionalValue(argv);
+      const cwd = valueAfter(argv, '--cwd');
+      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>]');
+      const title = valueAfter(argv, '--title');
+      console.log(JSON.stringify(await client.post('/api/sessions/adopt', { threadId, cwd, title }), null, 2));
+      return;
+    }
     case 'send': {
       const sessionId = argv[1];
       const text = argv.slice(2).join(' ');
@@ -245,6 +253,11 @@ function hasFlag(argv: string[], name: string): boolean {
   return argv.includes(name);
 }
 
+function positionalValue(argv: string[]): string | undefined {
+  const value = argv[1];
+  return value && !value.startsWith('--') ? value : undefined;
+}
+
 function queryString(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -393,7 +406,7 @@ function formatStatus(value: unknown): string {
 
 function formatSessions(value: unknown): string {
   const sessions = value as Array<{ id: string; title: string; cwd: string; status: string }>;
-  if (sessions.length === 0) return 'No sessions.';
+  if (sessions.length === 0) return 'No Hub-managed sessions.';
   return sessions.map((session) => `${session.id}\t${session.status}\t${session.title}\t${session.cwd}`).join('\n');
 }
 
@@ -414,10 +427,10 @@ function formatSessionDetail(value: unknown): string {
     approvals?: unknown[];
   };
   return [
-    `${detail.session.id}\t${detail.session.status}\t${detail.session.title}`,
+    `Hub session: ${detail.session.id}\t${detail.session.status}\t${detail.session.title}`,
     `cwd: ${detail.session.cwd}`,
-    `thread: ${detail.session.codexThreadId ?? '-'}`,
-    `turn: ${detail.session.currentTurnId ?? '-'}`,
+    `Codex thread: ${detail.session.codexThreadId ?? '-'}`,
+    `Codex turn: ${detail.session.currentTurnId ?? '-'}`,
     `control: ${detail.session.controlLabel ?? 'shared'}`,
     `lease: ${detail.session.controlLeaseExpiresAt ? new Date(detail.session.controlLeaseExpiresAt).toISOString() : '-'}`,
     `lastError: ${detail.session.lastError ?? '-'}`,
@@ -459,16 +472,17 @@ function printHelp(): void {
     '  cx-tg config set <key> <value>     Update settings',
     '  cx-tg config validate             Validate settings',
     '  cx-tg status                      Show Hub status',
-    '  cx-tg sessions [--json]           List sessions',
-    '  cx-tg session <session-id>        Show session detail',
-    '  cx-tg messages <session-id>       Show session messages',
-    '  cx-tg new --cwd <path>            Create session',
+    '  cx-tg sessions [--json]           List Hub-managed sessions',
+    '  cx-tg session <session-id>        Show Hub session detail',
+    '  cx-tg messages <session-id>       Show Hub session messages',
+    '  cx-tg new --cwd <path>            Create Hub-managed session',
+    '  cx-tg adopt --thread <id> --cwd <path> Adopt Codex thread',
     '  cx-tg send <session-id> <text>    Send message',
     '  cx-tg attach <session-id>         Attach shared CLI to a session',
     '  cx-tg attach <session-id> --claim Attach with exclusive control',
     '  cx-tg stop <session-id>           Stop session',
     '  cx-tg rename <session-id> <title> Rename session',
-    '  cx-tg delete <session-id>         Delete session',
+    '  cx-tg delete <session-id>         Delete Hub session',
     '  cx-tg approvals [--all]           List approvals',
     '  cx-tg approve <approval-id>       Resolve approval',
     '  cx-tg doctor                      Check local Hub',

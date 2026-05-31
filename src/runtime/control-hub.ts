@@ -58,6 +58,32 @@ export class ControlHub {
     bind?: { controlType: ControlType; externalId: string };
     bypassApprovalsAndSandbox?: boolean;
   }): Session {
+    return this.createSessionRecord({ ...input, codexThreadId: null });
+  }
+
+  adoptCodexThread(input: {
+    threadId: string;
+    cwd: string;
+    title?: string;
+    bind?: { controlType: ControlType; externalId: string };
+    bypassApprovalsAndSandbox?: boolean;
+  }): Session {
+    const threadId = input.threadId.trim();
+    if (!threadId) throw new Error('Codex thread id is required');
+    const existing = this.store.getSessionByCodexThreadId(threadId);
+    if (existing) throw new Error(`Codex thread is already managed by Hub session: ${existing.id}`);
+    const session = this.createSessionRecord({ ...input, codexThreadId: threadId });
+    logger.info('codex thread adopted', { sessionKey: session.id, threadId, cwd: session.cwd });
+    return session;
+  }
+
+  private createSessionRecord(input: {
+    cwd: string;
+    codexThreadId: string | null;
+    title?: string;
+    bind?: { controlType: ControlType; externalId: string };
+    bypassApprovalsAndSandbox?: boolean;
+  }): Session {
     const cwd = resolveWorkspacePath(this.config, input.cwd);
     if (!existsSync(cwd)) throw new Error(`Path does not exist: ${cwd}`);
     if (!statSync(cwd).isDirectory()) throw new Error(`Path is not a directory: ${cwd}`);
@@ -69,7 +95,7 @@ export class ControlHub {
       cwd,
       agent: 'codex',
       status: 'idle',
-      codexThreadId: null,
+      codexThreadId: input.codexThreadId,
       currentTurnId: null,
       controlOwner: null,
       controlOwnerId: null,

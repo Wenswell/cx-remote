@@ -19,6 +19,13 @@ const createSessionSchema = z.object({
   bypassApprovalsAndSandbox: z.boolean().optional(),
 });
 
+const adoptSessionSchema = z.object({
+  threadId: z.string().min(1),
+  cwd: z.string().min(1),
+  title: z.string().optional(),
+  bypassApprovalsAndSandbox: z.boolean().optional(),
+});
+
 const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
 
 const sendMessageSchema = z.object({
@@ -208,6 +215,17 @@ export class HubServer {
       return c.json(session, 201);
     });
 
+    app.post('/api/sessions/adopt', async (c) => {
+      const input = adoptSessionSchema.parse(await c.req.json());
+      const session = this.hub.adoptCodexThread({
+        threadId: input.threadId,
+        cwd: input.cwd,
+        title: input.title,
+        bypassApprovalsAndSandbox: input.bypassApprovalsAndSandbox,
+      });
+      return c.json(session, 201);
+    });
+
     app.get('/api/sessions/:id', (c) => c.json(this.hub.getSessionDetail(c.req.param('id'))));
 
     app.patch('/api/sessions/:id', async (c) => {
@@ -386,7 +404,7 @@ function errorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof z.ZodError) return 400;
   const message = errorMessage(error).toLowerCase();
   if (message.includes('not found')) return 404;
-  if (message.includes('already running') || message.includes('controlled by')) return 409;
+  if (message.includes('already running') || message.includes('controlled by') || message.includes('already managed')) return 409;
   if (error instanceof Error) return 400;
   return 500;
 }

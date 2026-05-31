@@ -121,6 +121,11 @@ export class Store {
     return row ? decodeSession(row) : null;
   }
 
+  getSessionByCodexThreadId(threadId: string): Session | null {
+    const row = this.db.prepare('SELECT * FROM sessions WHERE codexThreadId = ?').get(threadId) as SessionRow | undefined;
+    return row ? decodeSession(row) : null;
+  }
+
   listSessions(): Session[] {
     const rows = this.db.prepare('SELECT * FROM sessions ORDER BY updatedAt DESC').all() as SessionRow[];
     return rows.map(decodeSession);
@@ -572,6 +577,10 @@ export class Store {
 
       CREATE INDEX IF NOT EXISTS idx_events_session_id
         ON events(sessionId, id);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_codex_thread_id
+        ON sessions(codexThreadId)
+        WHERE codexThreadId IS NOT NULL;
     `);
     this.ensureSessionControlColumns();
   }

@@ -55,6 +55,23 @@ test('prompt job status transitions update queue counts', () => {
   });
 });
 
+test('sessions can be looked up by Codex thread id', () => {
+  withStore((store) => {
+    const session = createSession(store, 'session-1', 'idle', 'thread-1');
+
+    assert.equal(store.getSessionByCodexThreadId('thread-1')?.id, session.id);
+    assert.equal(store.getSessionByCodexThreadId('missing'), null);
+  });
+});
+
+test('Codex thread id is unique across Hub sessions', () => {
+  withStore((store) => {
+    createSession(store, 'session-1', 'idle', 'thread-1');
+
+    assert.throws(() => createSession(store, 'session-2', 'idle', 'thread-1'));
+  });
+});
+
 test('cancelPromptJobs cancels queued and running prompts for a session', () => {
   withStore((store) => {
     const session = createSession(store);

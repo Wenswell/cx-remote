@@ -37,7 +37,7 @@ src/cli.ts        terminal CLI client
 
 | Entity | Purpose |
 |---|---|
-| `Session` | Codex working directory, status, thread id, model/sandbox config, active control owner |
+| `Session` | Hub-managed record with Codex working directory, status, unique thread id, model/sandbox config, active control owner |
 | `Message` | user/assistant/tool/system messages for a session |
 | `PromptJob` | persisted per-session prompt queue with `queued`, `running`, `done`, `failed`, and `canceled` states |
 | `Approval` | pending and resolved Codex approvals or choice requests |
@@ -46,10 +46,10 @@ src/cli.ts        terminal CLI client
 
 ## Control Flow
 
-1. A control endpoint creates or selects a session.
+1. A control endpoint creates a Hub-managed session, adopts an existing Codex thread, or selects a session.
 2. The control sends text to `ControlHub.sendMessage`.
 3. `ControlHub` starts or reuses `CodexRuntime`.
-4. `CodexRuntime` talks to `codex app-server` over JSON-RPC.
+4. `CodexRuntime` starts a new Codex thread or resumes the adopted thread, then talks to `codex app-server` over JSON-RPC.
 5. Codex events are persisted as messages and published through `EventBus`.
 6. Web receives events through SSE.
 7. Telegram receives assistant messages and approval requests through its adapter.
@@ -107,6 +107,7 @@ GET    /api/workspaces
 GET    /api/files
 GET    /api/sessions
 POST   /api/sessions
+POST   /api/sessions/adopt
 GET    /api/sessions/:id
 PATCH  /api/sessions/:id
 DELETE /api/sessions/:id
@@ -126,6 +127,7 @@ GET    /api/events
 API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
 
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
+`POST /api/sessions/adopt` accepts `threadId`, `cwd`, and optional `title`, then creates a Hub-managed session mapped to that native Codex thread. `codexThreadId` is unique in the Hub store.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
 `POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
@@ -148,6 +150,19 @@ Queued jobs survive Hub restart. On startup, leftover `running` jobs are marked 
 
 `Claim` creates a temporary exclusive lease. While the lease is active, only the matching owner can send. CLI `attach` is shared by default; `cx-tg attach <session-id> --claim` claims a short lease and refreshes it while the process is alive, then releases it on exit.
 
+## Session Adoption
+
+Hub sessions are the synchronization boundary for Web, Telegram, and CLI. Native Codex threads are adopted explicitly:
+
+```text
+cx-tg adopt --thread <codex-thread-id> --cwd <path>
+POST /api/sessions/adopt
+```
+
+Adoption stores the existing Codex thread id on a new Hub session. The next prompt resumes that thread with `thread/resume` before `turn/start`. Hub history starts at adoption; previous native Codex transcript remains in Codex storage.
+
+Deleting a Hub session removes Hub messages, queue, approvals, control state, and events. It leaves the native Codex thread in Codex storage.
+
 ## First Version Boundaries
 
 Included:
@@ -157,6 +172,7 @@ Included:
 - Codex only
 - local Hub
 - SSE updates
+- explicit native Codex thread adoption
 
 Excluded:
 
@@ -169,4 +185,4 @@ Excluded:
 
 ## Why This Shape
 
-The old project bound sessions directly to IM threads. The new design separates `Session` from `ControlBinding`, so the same Codex session can be controlled from Web, Telegram, or CLI.
+The old project bound sessions directly to IM threads. The current design separates Hub-managed `Session` from `ControlBinding`, so the same Codex thread can be controlled from Web, Telegram, or CLI after creation or adoption.

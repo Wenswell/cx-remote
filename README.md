@@ -1,6 +1,6 @@
 # cx-tg
 
-Local Codex Control Hub. Use Web, Telegram, or the terminal CLI to control Codex sessions running on this machine.
+Local Codex Control Hub. Use Web, Telegram, or the terminal CLI to control Hub-managed Codex sessions on this machine.
 
 ## Status
 
@@ -9,8 +9,9 @@ First usable rebuild:
 - Web control console
 - Telegram control and approval buttons
 - CLI control commands
-- SQLite persistence for sessions, messages, prompt queue, approvals, bindings, and events
+- SQLite persistence for Hub sessions, messages, prompt queue, approvals, bindings, and events
 - Codex execution through `codex app-server`
+- adoption of existing native Codex threads into Hub-managed sessions
 - Telegram is the only IM control in this version
 
 ## Install
@@ -69,20 +70,22 @@ http://127.0.0.1:3030/?token=<access-token>
 
 The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
 The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
+Web shows Hub-managed sessions. Native Codex threads appear after adoption.
 
 The Web console can:
 
-- create sessions from configured workspace roots
+- create Hub-managed sessions from configured workspace roots
+- adopt existing Codex threads
 - browse workspace directories
 - send messages to Codex
-- view session messages, runtime status, Codex config, thread id, and turn id
+- view Hub messages, runtime status, Codex config, thread id, and turn id
 - view active prompt queue state
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
 - keep one event stream per selected session and resume from the session event cursor
 - take or release exclusive session control
 - queue input while a Codex turn is already running; queued prompts survive Hub restart
-- rename and delete sessions
+- rename Hub sessions and delete them from the Hub store
 - cancel a running turn and queued prompts
 
 ## CLI
@@ -97,6 +100,7 @@ cx-tg sessions
 cx-tg session <session-id>
 cx-tg messages <session-id>
 cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
+cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg
 cx-tg send <session-id> "check git status"
 cx-tg attach <session-id>
 cx-tg attach <session-id> --claim
@@ -109,6 +113,8 @@ cx-tg doctor
 ```
 
 `cc-hub` is kept as an alias for the same binary.
+
+`cx-tg adopt` creates a Hub session that points to an existing Codex thread. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
 ## Telegram
 
@@ -210,4 +216,4 @@ curl -H "Authorization: Bearer <token>" http://127.0.0.1:3030/api/health
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md).
+See [docs/architecture.md](docs/architecture.md) and [docs/session-model.md](docs/session-model.md).

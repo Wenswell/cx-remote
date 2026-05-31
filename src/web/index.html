@@ -19,9 +19,10 @@
           Refresh
         </sl-button>
       </div>
+      <strong>Hub-managed sessions</strong>
       <div id="sessions" class="stack"></div>
       <form id="new-session" class="stack">
-        <strong>New session</strong>
+        <strong>Create managed session</strong>
         <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
         <div class="row">
           <sl-button id="root-dir" type="button" size="small">
@@ -37,12 +38,22 @@
           Create
         </sl-button>
       </form>
+      <form id="adopt-session" class="stack">
+        <strong>Adopt Codex thread</strong>
+        <sl-input id="adopt-thread-id" name="threadId" placeholder="Codex thread ID" required size="small"></sl-input>
+        <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required size="small"></sl-input>
+        <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
+        <sl-button variant="primary" type="submit">
+          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+          Adopt thread
+        </sl-button>
+      </form>
       <div id="prompt-queue" class="stack"></div>
     </aside>
     <main class="main">
       <header class="topbar">
         <div>
-          <div class="title" id="session-title">No session</div>
+          <div class="title" id="session-title">No Hub session</div>
           <div class="details" id="session-meta"></div>
           <div class="details" id="session-detail"></div>
         </div>
@@ -63,9 +74,9 @@
             <sl-icon slot="prefix" library="system" name="x-circle-fill"></sl-icon>
             Cancel
           </sl-button>
-          <sl-button id="delete" type="button" size="small" variant="danger" title="Delete this local session and its history">
+          <sl-button id="delete" type="button" size="small" variant="danger" title="Delete this Hub session record and Hub history">
             <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
-            Delete session
+            Delete from Hub
           </sl-button>
         </div>
       </header>
@@ -77,7 +88,7 @@
       </section>
       <section class="messages" id="messages"></section>
       <form id="composer" class="composer">
-        <sl-textarea id="composer-text" name="text" placeholder="Message Codex" required resize="auto"></sl-textarea>
+        <sl-textarea id="composer-text" name="text" placeholder="Message Codex through Hub" required resize="auto"></sl-textarea>
         <div class="row">
           <sl-button variant="primary" type="submit">
             <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
@@ -92,10 +103,11 @@
     <sl-icon slot="icon" library="system" name="x-circle-fill"></sl-icon>
     <span id="error-message"></span>
   </sl-alert>
-  <sl-dialog id="delete-dialog" label="Delete session">
+  <sl-dialog id="delete-dialog" label="Delete Hub session">
     <div id="delete-dialog-message">Delete this session?</div>
+    <div class="muted">This removes Hub messages, queue, approvals, and events. The Codex thread remains in Codex.</div>
     <sl-button slot="footer" id="delete-cancel" type="button">Cancel</sl-button>
-    <sl-button slot="footer" id="delete-confirm" type="button" variant="danger">Delete session</sl-button>
+    <sl-button slot="footer" id="delete-confirm" type="button" variant="danger">Delete from Hub</sl-button>
   </sl-dialog>
 </body>
 </html>

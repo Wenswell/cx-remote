@@ -31,6 +31,7 @@ export interface CodexAppServerClientOptions {
   bin: string;
   search: boolean;
   bypassApprovalsAndSandbox: boolean;
+  onDisconnect?: () => void;
 }
 
 export class CodexAppServerClient {
@@ -72,12 +73,14 @@ export class CodexAppServerClient {
       logger.warn('codex app-server exited', { code, signal });
       this.rejectAll(error);
       this.child = null;
+      this.options.onDisconnect?.();
     });
 
     this.child.on('error', (error) => {
       logger.error('codex app-server process error', { error: error.message });
       this.rejectAll(error);
       this.child = null;
+      this.options.onDisconnect?.();
     });
 
     const lines = createInterface({ input: this.child.stdout });

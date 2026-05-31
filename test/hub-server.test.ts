@@ -160,6 +160,66 @@ test('session queue API lists active prompt jobs', async () => {
   }
 });
 
+test('session adopt API creates a Hub-managed session for an existing Codex thread', async () => {
+  const context = createTestApp();
+
+  try {
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({ threadId: 'thread-1', cwd: process.cwd(), title: 'Adopted thread' }),
+    });
+    const session = await json<{ id: string; title: string; codexThreadId: string | null; currentTurnId: string | null }>(response);
+
+    assert.equal(response.status, 201);
+    assert.equal(session.title, 'Adopted thread');
+    assert.equal(session.codexThreadId, 'thread-1');
+    assert.equal(session.currentTurnId, null);
+
+    const detail = await json<{ session: { codexThreadId: string | null } }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+    assert.equal(detail.session.codexThreadId, 'thread-1');
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session adopt API rejects duplicate Codex threads', async () => {
+  const context = createTestApp();
+
+  try {
+    context.hub.adoptCodexThread({ threadId: 'thread-1', cwd: process.cwd() });
+
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({ threadId: 'thread-1', cwd: process.cwd() }),
+    });
+
+    assert.equal(response.status, 409);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session adopt API rejects missing required fields', async () => {
+  const context = createTestApp();
+
+  try {
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({ cwd: process.cwd() }),
+    });
+
+    assert.equal(response.status, 400);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
 test('approval resolve API records caller control type', async () => {
   const context = createTestApp();
 

@@ -59,7 +59,12 @@ export function withStore(fn: (store: Store) => void): void {
   }
 }
 
-export function createSession(store: Store, id = 'session-1', status: Session['status'] = 'idle'): Session {
+export function createSession(
+  store: Store,
+  id = 'session-1',
+  status: Session['status'] = 'idle',
+  codexThreadId: string | null = null,
+): Session {
   const now = Date.now();
   return store.createSession({
     id,
@@ -67,7 +72,7 @@ export function createSession(store: Store, id = 'session-1', status: Session['s
     cwd: process.cwd(),
     agent: 'codex',
     status,
-    codexThreadId: null,
+    codexThreadId,
     currentTurnId: null,
     controlOwner: null,
     controlOwnerId: null,

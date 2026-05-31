@@ -11,9 +11,9 @@ import { formatControlClaimed, formatControlReleased, formatStopSent } from './c
 const commands = [
   { command: 'start', description: 'Show CX TG help' },
   { command: 'status', description: 'Show bridge status' },
-  { command: 'new', description: 'Create session: /new <path>' },
-  { command: 'sessions', description: 'List sessions' },
-  { command: 'use', description: 'Bind chat to a session' },
+  { command: 'new', description: 'Create Hub session: /new <path>' },
+  { command: 'sessions', description: 'List Hub sessions' },
+  { command: 'use', description: 'Bind chat to a Hub session' },
   { command: 'bind', description: 'Alias for /use' },
   { command: 'claim', description: 'Claim current session control' },
   { command: 'release', description: 'Release current session control' },
@@ -112,7 +112,7 @@ export class TelegramControl {
       const sessionId = text.replace(/^\/(use|bind)\s+/, '').trim();
       const session = this.hub.getSession(sessionId);
       this.hub.bindControl('telegram', key, session.id);
-      await this.send(target, `Bound to session:\n${session.title}\n${session.id}`);
+      await this.send(target, `Bound to Hub session:\n${session.title}\n${session.id}`);
       return;
     }
 
@@ -148,7 +148,7 @@ export class TelegramControl {
         cwd,
         bind: { controlType: 'telegram', externalId: key },
       });
-      await this.send(target, `Session created:\n${session.title}\n${session.cwd}\n${session.id}`);
+      await this.send(target, `Hub session created:\n${session.title}\n${session.cwd}\n${session.id}`);
       return;
     }
 
@@ -198,7 +198,7 @@ export class TelegramControl {
 
   private boundSession(key: string): Session {
     const binding = this.hub.getBinding('telegram', key);
-    if (!binding) throw new Error('No session bound. Use /new <path> or /use <session-id>.');
+    if (!binding) throw new Error('No Hub session bound. Use /new <path> or /use <session-id>.');
     return this.hub.getSession(binding.sessionId);
   }
 
@@ -287,8 +287,8 @@ function telegramOwner(key: string, userId: string): { id: string; label: string
 function helpText(webUrl: string): string {
   return [
     'CX TG commands',
-    '/new <path> - create and bind a session',
-    '/sessions - list sessions',
+    '/new <path> - create and bind a Hub session',
+    '/sessions - list Hub-managed sessions',
     '/use <session-id> - bind this chat/topic',
     '/bind <session-id> - bind this chat/topic',
     '/claim - claim control',
@@ -309,8 +309,8 @@ function formatSession(session: Session): string {
     session.id,
     session.cwd,
     session.status,
-    `Thread: ${session.codexThreadId ?? '-'}`,
-    `Turn: ${session.currentTurnId ?? '-'}`,
+    `Codex thread: ${session.codexThreadId ?? '-'}`,
+    `Codex turn: ${session.currentTurnId ?? '-'}`,
     `Control: ${session.controlLabel ?? 'shared'}`,
     `Lease: ${session.controlLeaseExpiresAt ? new Date(session.controlLeaseExpiresAt).toISOString() : '-'}`,
     `Error: ${session.lastError ?? '-'}`,
@@ -329,16 +329,16 @@ function formatApprovals(approvals: Approval[]): string {
 function formatStatus(stats: ReturnType<ControlHub['stats']>, sessionId: string | undefined): string {
   return [
     'CX TG status',
-    `Sessions: ${stats.sessions}`,
+    `Hub-managed sessions: ${stats.sessions}`,
     `Messages: ${stats.messages}`,
     `Pending approvals: ${stats.pendingApprovals}`,
     `Active runtimes: ${stats.runtimes}`,
-    `Bound session: ${sessionId ?? 'none'}`,
+    `Bound Hub session: ${sessionId ?? 'none'}`,
   ].join('\n');
 }
 
 function formatSessions(sessions: Session[]): string {
-  if (sessions.length === 0) return 'No sessions. Use /new <path>.';
+  if (sessions.length === 0) return 'No Hub-managed sessions. Use /new <path>.';
   return sessions.map((session, index) => [
     `${index + 1}. ${session.title}`,
     session.id,
