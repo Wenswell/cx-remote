@@ -234,4 +234,6 @@ test('web page loads split assets and client uses cookie event stream', () => {
   assert.match(script, /eventSourceSessionId === sessionId/);
   assert.match(script, /params\.set\('afterId'/);
   assert.match(script, /!messages\.some\(\(item\) => item\.id === message\.id\)/);
+  assert.doesNotMatch(script, /event\.currentTarget\.reset\(\)/);
+  assert.match(script, /const formElement = event\.currentTarget/);
 });

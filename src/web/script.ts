@@ -437,26 +437,28 @@ export function webScript(): string {
     };
     $('new-session').onsubmit = async (event) => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
+      const formElement = event.currentTarget;
+      const form = new FormData(formElement);
       const session = await api(apiPath.sessions, {
         method: 'POST',
         body: JSON.stringify({ cwd: form.get('cwd'), title: form.get('title') })
       });
       activeSessionId = session.id;
       localStorage.setItem('cx_tg_session', activeSessionId);
-      event.currentTarget.reset();
+      formElement.reset();
       await loadAll();
     };
     $('composer').onsubmit = async (event) => {
       event.preventDefault();
       if (!activeSessionId) return alert('Select a session');
-      const text = new FormData(event.currentTarget).get('text');
+      const formElement = event.currentTarget;
+      const text = new FormData(formElement).get('text');
       $('send-state').textContent = 'Sending';
       await api(apiPath.session(activeSessionId, '/messages'), {
         method: 'POST',
         body: JSON.stringify({ text, ownerId: clientId, controlLabel })
       });
-      event.currentTarget.reset();
+      formElement.reset();
       $('send-state').textContent = '';
       await loadSession();
     };
