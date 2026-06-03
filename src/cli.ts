@@ -84,17 +84,20 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     }
     case 'new': {
       const cwd = valueAfter(argv, '--cwd') ?? argv[1];
-      if (!cwd) throw new Error('Usage: cx-tg new --cwd <path> [--title <title>] [runtime flags]');
+      if (!cwd) throw new Error('Usage: cx-tg new --cwd <path> [--node <node-id>] [--title <title>] [runtime flags]');
       const title = valueAfter(argv, '--title');
-      console.log(JSON.stringify(await client.post('/api/sessions', { cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
+      const nodeId = valueAfter(argv, '--node');
+      console.log(JSON.stringify(await client.post('/api/sessions', { nodeId, cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
       return;
     }
     case 'adopt': {
       const threadId = valueAfter(argv, '--thread') ?? positionalValue(argv);
       const cwd = valueAfter(argv, '--cwd');
-      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>] [--import] [runtime flags]');
+      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] [--title <title>] [--import] [runtime flags]');
       const title = valueAfter(argv, '--title');
+      const nodeId = valueAfter(argv, '--node');
       console.log(JSON.stringify(await client.post('/api/sessions/adopt', {
+        nodeId,
         threadId,
         cwd,
         title,
@@ -435,15 +438,16 @@ function formatStatus(value: unknown): string {
 }
 
 function formatSessions(value: unknown): string {
-  const sessions = value as Array<{ id: string; title: string; cwd: string; status: string }>;
+  const sessions = value as Array<{ id: string; title: string; cwd: string; status: string; nodeName?: string }>;
   if (sessions.length === 0) return 'No Hub-managed sessions.';
-  return sessions.map((session) => `${session.id}\t${session.status}\t${session.title}\t${session.cwd}`).join('\n');
+  return sessions.map((session) => `${session.id}\t${session.nodeName ?? 'local'}\t${session.status}\t${session.title}\t${session.cwd}`).join('\n');
 }
 
 function formatSessionDetail(value: unknown): string {
   const detail = value as {
     session: {
       id: string;
+      nodeName?: string;
       title: string;
       cwd: string;
       status: string;
@@ -463,7 +467,7 @@ function formatSessionDetail(value: unknown): string {
     approvals?: unknown[];
   };
   return [
-    `Hub session: ${detail.session.id}\t${detail.session.status}\t${detail.session.title}`,
+    `Hub session: ${detail.session.id}\t${detail.session.nodeName ?? 'local'}\t${detail.session.status}\t${detail.session.title}`,
     `cwd: ${detail.session.cwd}`,
     `runtime: ${formatSessionConfig(detail.session.config)}`,
     `Codex thread: ${detail.session.codexThreadId ?? '-'}`,
@@ -522,10 +526,10 @@ function printHelp(): void {
     '  cx-tg sessions [--json]           List Hub-managed sessions',
     '  cx-tg session <session-id>        Show Hub session detail',
     '  cx-tg messages <session-id>       Show Hub session messages',
-    '  cx-tg new --cwd <path>            Create Hub-managed session',
+    '  cx-tg new --cwd <path> [--node <id>] Create Hub-managed session',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
-    '  cx-tg adopt --thread <id> --cwd <path> Adopt Codex thread',
+    '  cx-tg adopt --thread <id> --cwd <path> [--node <id>] Adopt Codex thread',
     '    [--import]',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',

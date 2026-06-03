@@ -37,7 +37,7 @@ export async function startApp(): Promise<void> {
     workspaceRoots: config.workspace.roots.join(','),
   });
 
-  server.start();
+  await server.start();
   await telegram.start();
 
   const publicUrl = config.server.publicUrl || `http://${config.server.host}:${config.server.port}`;

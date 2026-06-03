@@ -1,6 +1,6 @@
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 
-export type SettingFieldType = 'string' | 'number' | 'boolean' | 'string[]' | 'enum';
+export type SettingFieldType = 'string' | 'number' | 'boolean' | 'string[]' | 'enum' | 'json';
 
 export interface SettingField {
   key: string;
@@ -19,6 +19,8 @@ export const SETTING_FIELDS: SettingField[] = [
   { key: 'server.port', path: ['server', 'port'], type: 'number', env: 'CX_TG_PORT', restartRequired: true, description: 'Hub listen port' },
   { key: 'server.publicUrl', path: ['server', 'publicUrl'], type: 'string', env: 'CX_TG_PUBLIC_URL', description: 'External Web URL' },
   { key: 'server.accessToken', path: ['server', 'accessToken'], type: 'string', env: 'CX_TG_ACCESS_TOKEN', secret: true, restartRequired: true, description: 'API and Web bearer token' },
+  { key: 'cluster.name', path: ['cluster', 'name'], type: 'string', restartRequired: true, description: 'Display name for this Hub node' },
+  { key: 'cluster.peers', path: ['cluster', 'peers'], type: 'json', secret: true, restartRequired: true, description: 'Remote Hub peer definitions' },
   { key: 'workspace.roots', path: ['workspace', 'roots'], type: 'string[]', restartRequired: true, description: 'Allowed workspace roots' },
   { key: 'codex.bin', path: ['agents', 'codex', 'bin'], type: 'string', env: 'CODEX_BIN', restartRequired: true, description: 'Codex executable' },
   { key: 'codex.model', path: ['agents', 'codex', 'model'], type: 'enum', env: 'CODEX_MODEL', choices: ['auto', ...CODEX_MODEL_OPTIONS], description: 'Codex model' },

@@ -1,29 +1,34 @@
 # Architecture
 
-`cx-tg` is a local-first Control Hub for Codex.
+`cx-tg` is a local-first Control Hub for Codex. One Hub can aggregate other Hub nodes over the LAN.
 
 ```text
 Web / Telegram / CLI
         │
         ▼
-ControlHub
-  - sessions
-  - messages
-  - approvals
-  - control bindings
-  - event stream
+HubServer
+  - local ControlHub
+  - remote node proxy
+  - cross-node event fan-in
         │
-        ▼
-CodexRuntime
-  - codex app-server
-  - thread / turn
-  - approval RPC
+        ├── local ControlHub
+        │     - sessions
+        │     - messages
+        │     - approvals
+        │     - control bindings
+        │     - event stream
+        │
+        └── remote Hub peers
+              - proxied session APIs
+              - proxied Codex session discovery
+              - live event relay
 ```
 
 ## Modules
 
 ```text
 src/config/       settings loading, defaults, env overrides, validation
+src/cluster/      remote Hub clients, node proxying, event fan-in
 src/store/        SQLite persistence
 src/runtime/      ControlHub, event bus, permission service
 src/agents/codex/ Codex app-server JSON-RPC runtime
@@ -51,8 +56,9 @@ src/cli.ts        terminal CLI client
 3. `ControlHub` starts or reuses `CodexRuntime`.
 4. `CodexRuntime` starts a new Codex thread or resumes the adopted thread, then talks to `codex app-server` over JSON-RPC.
 5. Codex events are persisted as messages and published through `EventBus`.
-6. Web receives events through SSE.
-7. Telegram receives assistant messages and approval requests through its adapter.
+6. Remote node events are relayed into the central Hub event stream with node-qualified session ids.
+7. Web receives events through SSE.
+8. Telegram receives assistant messages and approval requests through its adapter.
 
 ## Approval Flow
 
@@ -130,14 +136,17 @@ GET    /api/events
 API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
-`GET /api/sessions?cwd=<path>` lists Hub-managed sessions for one workspace directory, ordered by Hub session `updatedAt`. Without `cwd`, it lists all Hub-managed sessions for recent/history views.
-`GET /api/codex/sessions?cwd=<path>` lists Codex resume sessions recorded for one workspace directory. Results include thread title, timestamps, origin, and the Hub session id when that Codex session is already managed.
-`GET /api/codex/sessions/:threadId/preview` returns a small transcript preview for one Codex session, including message count, sampled user/assistant messages, and the Hub session id when already managed.
-`GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
-`POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
-`POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` is unique in the Hub store.
+`GET /api/status` also returns `nodes[]`, the current node plus any configured peers. `stats` is aggregated across reachable nodes.
+`GET /api/workspaces` returns local and remote workspace roots with `nodeId`, `nodeName`, `homePath`, and a stable `workspaceId`.
+`GET /api/files?workspaceId=<id>&path=<rel>` browses one workspace root, local or remote.
+`GET /api/sessions?nodeId=<node>&cwd=<path>` lists Hub-managed sessions for one node directory, ordered by Hub session `updatedAt`. Without `cwd`, `GET /api/sessions` lists recent sessions across all reachable nodes.
+`GET /api/codex/sessions?nodeId=<node>&cwd=<path>` lists Codex resume sessions recorded for one node directory. Results include thread title, timestamps, origin, node metadata, and the Hub session id when that Codex session is already managed.
+`GET /api/codex/sessions/:threadId/preview?nodeId=<node>` returns a small transcript preview for one Codex session, including message count, sampled user/assistant messages, and the Hub session id when already managed.
+`GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Remote sessions use namespaced ids like `laptop::550e8400-e29b-41d4-a716-446655440000`.
+`POST /api/sessions` and `POST /api/sessions/adopt` accept optional `nodeId` plus optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
+`POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, the owning Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` stays unique per node Hub store.
 `PATCH /api/sessions/:id/config` updates an idle Hub session runtime config and restarts its idle app-server runtime on the next prompt. Running or queued sessions reject config updates.
-`GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
+`GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`. Remote node events are relayed into this stream while the central Hub is running.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
 `POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
 
@@ -163,11 +172,11 @@ Queued jobs survive Hub restart. On startup, leftover `running` jobs are marked 
 
 ## Session Adoption
 
-Hub sessions are the synchronization boundary for Web, Telegram, and CLI. The Web sidebar uses three path-oriented sections:
+Hub sessions are still the synchronization boundary for Web, Telegram, and CLI, and the owning node keeps the real runtime state. The Web sidebar uses three path-oriented sections:
 
 ```text
 Recent Hub-managed sessions
-Selected workspace directory
+Selected node workspace directory
 Sessions in this directory
   - Hub-managed sessions
   - Native Codex sessions available to adopt
@@ -176,21 +185,21 @@ Sessions in this directory
 Web adoption follows Codex resume cwd filtering inside the selected directory:
 
 ```text
-GET /api/sessions?cwd=<path>
-GET /api/codex/sessions?cwd=<path>
-GET /api/codex/sessions/:threadId/preview
+GET /api/sessions?nodeId=<node>&cwd=<path>
+GET /api/codex/sessions?nodeId=<node>&cwd=<path>
+GET /api/codex/sessions/:threadId/preview?nodeId=<node>
 pick Codex session
-POST /api/sessions/adopt { threadId, cwd, importTranscript: true }
+POST /api/sessions/adopt { nodeId, threadId, cwd, importTranscript: true }
 ```
 
-CLI/API adoption accepts an explicit Codex thread id:
+CLI/API adoption accepts an explicit Codex thread id, and Web/CLI can point that adoption at a remote node:
 
 ```text
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --import
-POST /api/sessions/adopt { threadId, cwd, importTranscript? }
+cx-tg adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] --import
+POST /api/sessions/adopt { nodeId?, threadId, cwd, importTranscript? }
 ```
 
-Adoption stores the existing Codex thread id on a new Hub session. The next prompt resumes that thread with `thread/resume` before `turn/start`. When transcript import is requested, Hub copies the native Codex user/assistant messages into Hub messages during adoption.
+Adoption stores the existing Codex thread id on a new Hub session on the owning node. The next prompt resumes that thread with `thread/resume` before `turn/start`. When transcript import is requested, that node Hub copies the native Codex user/assistant messages into Hub messages during adoption.
 
 Deleting a Hub session removes Hub messages, queue, approvals, control state, and events. It leaves the native Codex thread in Codex storage.
 
@@ -248,6 +257,7 @@ Included:
 - SQLite persistence
 - Codex only
 - local Hub
+- remote Hub peer aggregation over LAN
 - SSE updates
 - explicit native Codex thread adoption
 
@@ -256,7 +266,6 @@ Excluded:
 - additional IM platforms
 - Telegram Mini App
 - PTY/xterm terminal mirroring
-- multi-machine runner
 - Claude hooks
 - multi-provider switching
 

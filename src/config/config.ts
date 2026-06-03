@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
@@ -10,6 +10,12 @@ const permissionModeSchema = z.enum(['default', 'read-only', 'safe-yolo', 'yolo'
 const codexModelSchema = z.enum(['auto', ...CODEX_MODEL_OPTIONS]);
 const codexReasoningEffortSchema = z.enum(['default', ...CODEX_REASONING_EFFORT_OPTIONS]);
 const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
+const clusterPeerSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
+  name: z.string().min(1),
+  url: z.string().url(),
+  accessToken: z.string().min(1),
+});
 
 export const settingsSchema = z.object({
   server: z.object({
@@ -17,6 +23,10 @@ export const settingsSchema = z.object({
     port: z.coerce.number().int().min(1).max(65535).default(3030),
     publicUrl: z.string().default(''),
     accessToken: z.string().min(16),
+  }),
+  cluster: z.object({
+    name: z.string().min(1).default(hostname()),
+    peers: z.array(clusterPeerSchema).default([]),
   }),
   workspace: z.object({
     roots: z.array(z.string().min(1)).min(1),
@@ -72,6 +82,7 @@ export interface AppConfig extends Settings {
 export type ConfigSource = 'generated' | 'file';
 export type ConfigPatch = Partial<{
   server: Partial<Settings['server']>;
+  cluster: Partial<Settings['cluster']>;
   workspace: Partial<Settings['workspace']>;
   agents: Partial<{
     default: Settings['agents']['default'];
@@ -161,6 +172,11 @@ export function patchSettings(patch: ConfigPatch): Settings {
     ...current,
     ...patch,
     server: { ...current.server, ...patch.server },
+    cluster: {
+      ...current.cluster,
+      ...patch.cluster,
+      peers: patch.cluster?.peers ?? current.cluster.peers,
+    },
     workspace: { ...current.workspace, ...patch.workspace },
     agents: {
       ...current.agents,
@@ -186,6 +202,7 @@ export function patchSettings(patch: ConfigPatch): Settings {
 export function validateSettings(input: unknown): Settings {
   const settings = settingsSchema.parse(input) as Settings;
   validateTelegram(settings);
+  validateCluster(settings);
   return settings;
 }
 
@@ -218,6 +235,7 @@ export function maskSettings<T>(settings: T): T {
       setPath(next, field.path, maskSecret(value));
     }
   }
+  maskClusterPeerSecrets(next);
   return next as T;
 }
 
@@ -234,6 +252,10 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
       port: 3030,
       publicUrl: '',
       accessToken: randomBytes(24).toString('hex'),
+    },
+    cluster: {
+      name: hostname(),
+      peers: [],
     },
     workspace: {
       roots: [process.cwd()],
@@ -393,6 +415,11 @@ function parseSettingInput(field: SettingField, value: unknown): unknown {
     return parsed;
   }
 
+  if (field.type === 'json') {
+    if (typeof value !== 'string') return value;
+    return JSON.parse(value);
+  }
+
   return value;
 }
 
@@ -409,5 +436,28 @@ function listEnv(value: string | undefined): string[] | undefined {
 function validateTelegram(config: Settings): void {
   if (config.controls.telegram.enabled && !config.controls.telegram.botToken) {
     throw new Error('controls.telegram.botToken is required when Telegram is enabled');
+  }
+}
+
+function validateCluster(config: Settings): void {
+  const ids = new Set<string>();
+  for (const peer of config.cluster.peers) {
+    if (peer.id === 'local') throw new Error('cluster.peers id "local" is reserved');
+    if (ids.has(peer.id)) throw new Error(`Duplicate cluster peer id: ${peer.id}`);
+    ids.add(peer.id);
+  }
+}
+
+function maskClusterPeerSecrets(settings: Record<string, unknown>): void {
+  const cluster = settings.cluster;
+  if (!cluster || typeof cluster !== 'object' || Array.isArray(cluster)) return;
+  const peers = (cluster as Record<string, unknown>).peers;
+  if (!Array.isArray(peers)) return;
+  for (const peer of peers) {
+    if (!peer || typeof peer !== 'object' || Array.isArray(peer)) continue;
+    const token = (peer as Record<string, unknown>).accessToken;
+    if (typeof token === 'string' && token) {
+      (peer as Record<string, unknown>).accessToken = maskSecret(token);
+    }
   }
 }

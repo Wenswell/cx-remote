@@ -89,7 +89,10 @@ function printValue(field: SettingField, value: unknown, revealSecrets: boolean)
 }
 
 function formatValue(value: unknown, field: SettingField, revealSecrets: boolean): string {
-  if (field.secret && typeof value === 'string' && !revealSecrets) return value ? maskSecret(value) : 'missing';
+  if (field.secret && !revealSecrets) {
+    if (typeof value === 'string') return value ? maskSecret(value) : 'missing';
+    if (value && typeof value === 'object') return JSON.stringify(maskSettings({ value }).value);
+  }
   if (Array.isArray(value)) return value.join(',');
   if (value === undefined || value === null) return '';
   if (typeof value === 'object') return JSON.stringify(value);

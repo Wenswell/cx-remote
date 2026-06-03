@@ -16,6 +16,16 @@ import {
 
 configureLogger({ level: 'error', console: false, prompts: false });
 
+function appFetch(apps: Record<string, { request: (input: Request | string | URL, init?: RequestInit) => Response | Promise<Response> }>): typeof fetch {
+  return (async (input: Request | string | URL, init?: RequestInit) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    const app = apps[url.origin];
+    if (!app) throw new Error(`No test app for origin: ${url.origin}`);
+    return await Promise.resolve(app.request(new Request(request)));
+  }) as typeof fetch;
+}
+
 test('events endpoint replays stored events after a cursor', async () => {
   const context = createTestApp();
   const abort = new AbortController();
@@ -209,6 +219,98 @@ test('sessions API filters Hub-managed sessions by workspace directory', async (
     assert.notEqual(body[0]?.id, rootSession.id);
   } finally {
     await closeTestHub(context);
+  }
+});
+
+test('aggregated workspaces and sessions include remote nodes', async () => {
+  const remote = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Remote node';
+      config.server.accessToken = 'remote-access-token';
+      config.workspace.roots = [process.cwd(), join(process.cwd(), 'src')];
+    },
+  });
+  const remoteSession = remote.hub.createSession({ cwd: process.cwd(), title: 'Remote session' });
+  const central = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Central node';
+      config.cluster.peers = [{
+        id: 'remote1',
+        name: 'Remote node',
+        url: 'http://remote.test',
+        accessToken: 'remote-access-token',
+      }];
+    },
+    fetchImpl: appFetch({ 'http://remote.test': remote.app }),
+  });
+  const localSession = central.hub.createSession({ cwd: process.cwd(), title: 'Local session' });
+
+  try {
+    const workspaces = await json<Array<{ nodeId: string; nodeName: string; path: string }>>(await central.app.request(
+      '/api/workspaces',
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(workspaces.some((workspace) => workspace.nodeId === 'local' && workspace.path === process.cwd()), true);
+    assert.equal(workspaces.some((workspace) => workspace.nodeId === 'remote1' && workspace.path === process.cwd()), true);
+
+    const sessions = await json<Array<{ id: string; localId: string; nodeId: string; nodeName: string; title: string }>>(await central.app.request(
+      '/api/sessions',
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(sessions.some((session) => session.id === localSession.id && session.nodeId === 'local'), true);
+    assert.equal(
+      sessions.some((session) => session.id === `remote1::${remoteSession.id}` && session.localId === remoteSession.id && session.nodeName === 'Remote node'),
+      true,
+    );
+  } finally {
+    await closeTestHub(central);
+    await closeTestHub(remote);
+  }
+});
+
+test('session detail and create APIs proxy remote nodes', async () => {
+  const remote = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Remote node';
+      config.server.accessToken = 'remote-access-token';
+    },
+  });
+  const remoteSession = remote.hub.createSession({ cwd: process.cwd(), title: 'Remote session' });
+  const central = createTestApp({
+    configure: (config) => {
+      config.cluster.peers = [{
+        id: 'remote1',
+        name: 'Remote node',
+        url: 'http://remote.test',
+        accessToken: 'remote-access-token',
+      }];
+    },
+    fetchImpl: appFetch({ 'http://remote.test': remote.app }),
+  });
+
+  try {
+    const detail = await json<{
+      session: { id: string; localId: string; nodeId: string; nodeName: string; title: string };
+    }>(await central.app.request(
+      `/api/sessions/${encodeURIComponent(`remote1::${remoteSession.id}`)}`,
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(detail.session.id, `remote1::${remoteSession.id}`);
+    assert.equal(detail.session.localId, remoteSession.id);
+    assert.equal(detail.session.nodeId, 'remote1');
+    assert.equal(detail.session.nodeName, 'Remote node');
+
+    const created = await json<{ id: string; nodeId: string; title: string }>(await central.app.request('/api/sessions', {
+      method: 'POST',
+      headers: jsonHeaders(central.config),
+      body: JSON.stringify({ nodeId: 'remote1', cwd: process.cwd(), title: 'Created through proxy' }),
+    }));
+    assert.equal(created.nodeId, 'remote1');
+    assert.equal(created.title, 'Created through proxy');
+    assert.equal(remote.hub.listSessions().some((session) => session.title === 'Created through proxy'), true);
+  } finally {
+    await closeTestHub(central);
+    await closeTestHub(remote);
   }
 });
 

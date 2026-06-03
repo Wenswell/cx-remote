@@ -178,8 +178,8 @@ export class ControlHub {
     return this.store.listEvents(afterId, sessionId);
   }
 
-  latestEventId(sessionId?: string): number {
-    if (sessionId) this.getSession(sessionId);
+  latestEventId(sessionId?: string, verifySession = true): number {
+    if (sessionId && verifySession) this.getSession(sessionId);
     return this.store.latestEventId(sessionId);
   }
 

@@ -27,6 +27,8 @@ export type TestApp = TestHub & {
 
 type TestAppOptions = {
   codexHome?: string;
+  configure?: (config: AppConfig) => void;
+  fetchImpl?: typeof fetch;
 };
 
 export function createTestHub(): TestHub {
@@ -42,7 +44,15 @@ export function createTestHub(): TestHub {
 
 export function createTestApp(options: TestAppOptions = {}): TestApp {
   const context = createTestHub();
-  return { ...context, app: new HubServer(context.hub, context.config, { webDistDir: context.webDistDir, codexHome: options.codexHome }).createApp() };
+  options.configure?.(context.config);
+  return {
+    ...context,
+    app: new HubServer(context.hub, context.config, {
+      webDistDir: context.webDistDir,
+      codexHome: options.codexHome,
+      fetchImpl: options.fetchImpl,
+    }).createApp(),
+  };
 }
 
 export async function closeTestHub(context: TestHub): Promise<void> {
@@ -103,6 +113,10 @@ export function createConfig(dbPath: string): AppConfig {
       port: 3030,
       publicUrl: '',
       accessToken: 'test-access-token',
+    },
+    cluster: {
+      name: 'Test node',
+      peers: [],
     },
     workspace: {
       roots: [process.cwd()],

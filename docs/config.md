@@ -31,11 +31,12 @@ cx-tg config validate
 
 `show` reads the settings file. `show --resolved` shows the runtime config after environment overrides and path resolution. Secret values are masked by default; use `--reveal-secrets` only in a trusted terminal.
 
-List values accept comma-separated input or a JSON array:
+List values accept comma-separated input or a JSON array. JSON-valued fields accept a JSON object or array:
 
 ```bash
 cx-tg config set workspace.roots /home/ilove/Documents/repos,/tmp/work
 cx-tg config set telegram.allowedUsers '["123456789","987654321"]'
+cx-tg config set cluster.peers '[{"id":"laptop","name":"My Laptop","url":"http://10.0.0.12:3030","accessToken":"..."}]'
 ```
 
 ## Doctor
@@ -63,6 +64,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 | `server.port` | number | `CX_TG_PORT` | yes |
 | `server.publicUrl` | string | `CX_TG_PUBLIC_URL` | no |
 | `server.accessToken` | string | `CX_TG_ACCESS_TOKEN` | yes |
+| `cluster.name` | string |  | yes |
+| `cluster.peers` | json |  | yes |
 | `workspace.roots` | string[] |  | yes |
 | `codex.bin` | string | `CODEX_BIN` | yes |
 | `codex.model` | enum | `CODEX_MODEL` | no |
@@ -94,6 +97,17 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
     "port": 3030,
     "publicUrl": "",
     "accessToken": "generated-token"
+  },
+  "cluster": {
+    "name": "server-node",
+    "peers": [
+      {
+        "id": "laptop",
+        "name": "Laptop",
+        "url": "http://10.0.0.12:3030",
+        "accessToken": "peer-token"
+      }
+    ]
   },
   "workspace": {
     "roots": ["/home/ilove/Documents/repos"]
@@ -136,6 +150,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 }
 ```
 
+Each peer entry points at another `cx-tg hub` instance. The central Hub keeps browsing, switching, and notifications in one Web UI, while the remote node keeps its own Codex runtime, queue, approvals, and persistence.
+
 ## Web Settings API
 
 Authenticated endpoints:
@@ -160,12 +176,15 @@ The response includes `restartRequired` for fields that require a Hub restart.
 
 `codex.*` settings are defaults for new Hub sessions. Each session stores its own runtime config snapshot, so later default changes do not rewrite existing Hub sessions.
 
+`cluster.name` is the label shown in Web for this node. `cluster.peers` defines the remote Hub nodes that should be aggregated into the same Web and API surface.
+
 Use per-session flags for one session:
 
 ```bash
 cx-tg new --cwd <path> --search
+cx-tg new --cwd <path> --node laptop --search
 cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --node laptop --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 

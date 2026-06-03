@@ -21,6 +21,7 @@ export async function runSetup(): Promise<void> {
     const host = await ask(rl, 'Listen host', current.server.host);
     const port = Number(await ask(rl, 'Listen port', String(current.server.port)));
     const publicUrl = await ask(rl, 'Public URL', current.server.publicUrl);
+    const clusterName = await ask(rl, 'Node name', current.cluster.name);
     const telegramEnabled = await yesNo(rl, 'Enable Telegram', current.controls.telegram.enabled);
     const telegramBotToken = telegramEnabled ? await askSecret(rl, 'Telegram bot token', current.controls.telegram.botToken) : current.controls.telegram.botToken;
     const telegramAllowedUsers = telegramEnabled ? splitList(await ask(rl, 'Telegram allowed users', current.controls.telegram.allowedUsers.join(','))) : current.controls.telegram.allowedUsers;
@@ -45,6 +46,10 @@ export async function runSetup(): Promise<void> {
         port,
         publicUrl,
         accessToken: current.server.accessToken || randomBytes(24).toString('hex'),
+      },
+      cluster: {
+        ...current.cluster,
+        name: clusterName,
       },
       workspace: {
         roots: workspaceRoots.map((root) => expandHome(root)),

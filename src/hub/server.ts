@@ -7,8 +7,8 @@ import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
+import { ClusterService, LOCAL_NODE_ID, type NodeStatusView } from '../cluster/service.js';
 import { resolveCodexRuntimeDefaults } from '../agents/codex/defaults.js';
-import { listCodexResumeSessions, readCodexSessionPreview } from '../agents/codex/sessions.js';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, resolveWorkspacePath, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
@@ -22,12 +22,14 @@ const codexModelSchema = z.enum(['auto', ...CODEX_MODEL_OPTIONS]);
 const codexReasoningEffortSchema = z.enum(['default', ...CODEX_REASONING_EFFORT_OPTIONS]);
 
 const createSessionSchema = z.object({
+  nodeId: z.string().optional(),
   cwd: z.string().min(1),
   title: z.string().optional(),
   config: sessionConfigSchema().optional(),
 });
 
 const adoptSessionSchema = z.object({
+  nodeId: z.string().optional(),
   threadId: z.string().min(1),
   cwd: z.string().min(1),
   title: z.string().optional(),
@@ -53,11 +55,13 @@ const updateSessionConfigSchema = z.object({
 });
 
 const codexSessionsQuerySchema = z.object({
+  nodeId: z.string().optional(),
   cwd: z.string().min(1),
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 
 const sessionsQuerySchema = z.object({
+  nodeId: z.string().optional(),
   cwd: z.string().min(1).optional(),
 });
 
@@ -95,19 +99,30 @@ function sessionConfigSchema() {
 export type HubServerOptions = {
   webDistDir?: string;
   codexHome?: string;
+  fetchImpl?: typeof fetch;
 };
 
 export class HubServer {
   private server: ServerType | null = null;
+  private readonly cluster: ClusterService;
 
   constructor(
     private readonly hub: ControlHub,
     private readonly config: AppConfig,
     private readonly options: HubServerOptions = {},
-  ) {}
+  ) {
+    this.cluster = new ClusterService(
+      this.hub,
+      this.hub.events,
+      this.config,
+      this.options.codexHome,
+      this.options.fetchImpl,
+    );
+  }
 
-  start(): void {
+  async start(): Promise<void> {
     if (this.server) return;
+    await this.cluster.start();
     const app = this.createApp();
     this.server = serve({
       fetch: app.fetch,
@@ -126,6 +141,7 @@ export class HubServer {
       if (!this.server) resolve();
     });
     this.server = null;
+    await this.cluster.stop();
   }
 
   createApp(): Hono {
@@ -164,38 +180,49 @@ export class HubServer {
       return c.json({ ok: true });
     });
     app.get('/api/health', (c) => c.json({ ok: true, name: 'cx-tg' }));
-    app.get('/api/status', (c) => c.json({
-      ok: true,
-      settingsPath: this.config.settingsPath,
-      homePath: homedir(),
-      workspaceRoots: this.config.workspace.roots,
-      codexDefaults: this.hub.defaultSessionConfig(),
-      codexRuntimeDefaults: resolveCodexRuntimeDefaults(),
-      eventCursor: this.hub.latestEventId(),
-      server: {
-        host: this.config.server.host,
-        port: this.config.server.port,
-        publicUrl: this.config.server.publicUrl,
-      },
-      controls: {
-        telegram: {
-          enabled: this.config.controls.telegram.enabled,
-          allowedUsers: this.config.controls.telegram.allowedUsers,
-          allowedChats: this.config.controls.telegram.allowedChats,
+    app.get('/api/status', async (c) => {
+      const localOnly = isLocalScope(c.req.query('scope'));
+      const nodes = await this.cluster.listNodes(localOnly);
+      return c.json({
+        ok: true,
+        node: {
+          id: LOCAL_NODE_ID,
+          name: this.config.cluster.name,
+          local: true,
         },
-      },
-      stats: this.hub.stats(),
-    }));
+        nodes,
+        settingsPath: this.config.settingsPath,
+        homePath: homedir(),
+        workspaceRoots: nodes.flatMap((node) => node.workspaceRoots),
+        codexDefaults: this.hub.defaultSessionConfig(),
+        codexRuntimeDefaults: resolveCodexRuntimeDefaults(),
+        eventCursor: this.hub.latestEventId(),
+        server: {
+          host: this.config.server.host,
+          port: this.config.server.port,
+          publicUrl: this.config.server.publicUrl,
+        },
+        controls: {
+          telegram: {
+            enabled: this.config.controls.telegram.enabled,
+            allowedUsers: this.config.controls.telegram.allowedUsers,
+            allowedChats: this.config.controls.telegram.allowedChats,
+          },
+        },
+        stats: aggregateNodeStats(nodes),
+      });
+    });
 
-    app.get('/api/workspaces', (c) => c.json(this.config.workspace.roots.map((root, index) => ({
-      id: String(index),
-      name: basename(root) || root,
-      path: root,
-    }))));
+    app.get('/api/workspaces', async (c) => {
+      return c.json(await this.cluster.listWorkspaces(isLocalScope(c.req.query('scope'))));
+    });
 
-    app.get('/api/files', (c) => {
-      const root = workspaceRoot(this.config.workspace.roots, c.req.query('root'));
+    app.get('/api/files', async (c) => {
+      const workspaceId = c.req.query('workspaceId');
       const path = c.req.query('path') || '';
+      if (workspaceId) return c.json(await this.cluster.listFiles(workspaceId, path));
+
+      const root = workspaceRoot(this.config.workspace.roots, c.req.query('root'));
       const current = resolve(root, path);
       if (!isPathInside(root, current)) throw new Error('Path must be inside the selected workspace root');
       if (!existsSync(current)) throw new Error(`Path does not exist: ${current}`);
@@ -213,6 +240,10 @@ export class HubServer {
         });
       const rel = relative(root, current);
       return c.json({
+        workspaceId: `legacy:${root}`,
+        nodeId: LOCAL_NODE_ID,
+        nodeName: this.config.cluster.name,
+        homePath: homedir(),
         root,
         current,
         relativePath: rel,
@@ -221,40 +252,27 @@ export class HubServer {
       });
     });
 
-    app.get('/api/codex/sessions', (c) => {
+    app.get('/api/codex/sessions', async (c) => {
       const input = codexSessionsQuerySchema.parse({
+        nodeId: c.req.query('nodeId'),
         cwd: c.req.query('cwd'),
         limit: c.req.query('limit'),
       });
-      const cwd = resolveWorkspacePath(this.config, input.cwd);
-      const managedSessionByThread = new Map(
-        this.hub.listSessions()
-          .filter((session) => session.codexThreadId)
-          .map((session) => [session.codexThreadId!, session.id]),
-      );
-      const sessions = listCodexResumeSessions({
-        cwd,
+      return c.json(await this.cluster.listCodexSessions({
+        nodeId: input.nodeId,
+        cwd: input.cwd,
         limit: input.limit,
-        codexHome: this.options.codexHome,
-      }).map((session) => ({
-        ...session,
-        managedSessionId: managedSessionByThread.get(session.id) || null,
+        localOnly: isLocalScope(c.req.query('scope')) || !input.nodeId,
       }));
-      return c.json({ cwd, sessions });
     });
 
-    app.get('/api/codex/sessions/:threadId/preview', (c) => {
+    app.get('/api/codex/sessions/:threadId/preview', async (c) => {
       const threadId = z.string().min(1).parse(c.req.param('threadId'));
-      const preview = readCodexSessionPreview({
+      return c.json(await this.cluster.previewCodexSession({
         threadId,
-        codexHome: this.options.codexHome,
-      });
-      if (!preview) throw new Error(`Codex thread not found: ${threadId}`);
-      const managed = this.hub.listSessions().find((session) => session.codexThreadId === threadId);
-      return c.json({
-        ...preview,
-        managedSessionId: managed?.id ?? null,
-      });
+        nodeId: c.req.query('nodeId') || undefined,
+        localOnly: isLocalScope(c.req.query('scope')) || !c.req.query('nodeId'),
+      }));
     });
 
     app.get('/api/settings', (c) => c.json({
@@ -276,14 +294,21 @@ export class HubServer {
       });
     });
 
-    app.get('/api/sessions', (c) => {
-      const input = sessionsQuerySchema.parse({ cwd: c.req.query('cwd') });
-      const cwd = input.cwd ? resolveWorkspacePath(this.config, input.cwd) : undefined;
-      return c.json(this.hub.listSessions(cwd));
+    app.get('/api/sessions', async (c) => {
+      const input = sessionsQuerySchema.parse({
+        nodeId: c.req.query('nodeId'),
+        cwd: c.req.query('cwd'),
+      });
+      return c.json(await this.cluster.listSessions({
+        nodeId: input.nodeId,
+        cwd: input.cwd,
+        localOnly: isLocalScope(c.req.query('scope')) || Boolean(input.cwd && !input.nodeId),
+      }));
     });
     app.post('/api/sessions', async (c) => {
       const input = createSessionSchema.parse(await c.req.json());
-      const session = this.hub.createSession({
+      const session = await this.cluster.createSession({
+        nodeId: input.nodeId,
         cwd: input.cwd,
         title: input.title,
         config: input.config,
@@ -293,56 +318,56 @@ export class HubServer {
 
     app.post('/api/sessions/adopt', async (c) => {
       const input = adoptSessionSchema.parse(await c.req.json());
-      const session = this.hub.adoptCodexThread({
+      const session = await this.cluster.adoptSession({
+        nodeId: input.nodeId,
         threadId: input.threadId,
         cwd: input.cwd,
         title: input.title,
         config: input.config,
         importTranscript: input.importTranscript,
-        codexHome: this.options.codexHome,
       });
       return c.json(session, 201);
     });
 
-    app.get('/api/sessions/:id', (c) => c.json(this.hub.getSessionDetail(c.req.param('id'))));
+    app.get('/api/sessions/:id', async (c) => c.json(await this.cluster.getSessionDetail(c.req.param('id'))));
 
     app.patch('/api/sessions/:id', async (c) => {
       const input = updateSessionSchema.parse(await c.req.json());
-      return c.json(this.hub.renameSession(c.req.param('id'), input.title));
+      return c.json(await this.cluster.renameSession(c.req.param('id'), input.title));
     });
 
     app.patch('/api/sessions/:id/config', async (c) => {
       const input = updateSessionConfigSchema.parse(await c.req.json());
-      return c.json(await this.hub.updateSessionConfig(c.req.param('id'), input.config));
+      return c.json(await this.cluster.updateSessionConfig(c.req.param('id'), input.config));
     });
 
     app.delete('/api/sessions/:id', async (c) => {
-      await this.hub.deleteSession(c.req.param('id'));
+      await this.cluster.deleteSession(c.req.param('id'));
       return c.json({ ok: true });
     });
 
     app.patch('/api/sessions/:id/control', async (c) => {
       const input = claimControlSchema.parse(await c.req.json());
-      return c.json(this.hub.claimControl(c.req.param('id'), {
+      return c.json(await this.cluster.claimControl(c.req.param('id'), {
         controlType: input.controlType,
         ownerId: input.ownerId,
-        label: input.controlLabel,
+        controlLabel: input.controlLabel,
         ttlMs: input.ttlMs,
       }));
     });
 
-    app.delete('/api/sessions/:id/control', (c) => {
-      return c.json(this.hub.releaseControl(c.req.param('id'), c.req.query('ownerId') || undefined));
+    app.delete('/api/sessions/:id/control', async (c) => {
+      return c.json(await this.cluster.releaseControl(c.req.param('id'), c.req.query('ownerId') || undefined));
     });
 
-    app.get('/api/sessions/:id/messages', (c) => c.json(this.hub.listMessages(c.req.param('id'), {
+    app.get('/api/sessions/:id/messages', async (c) => c.json(await this.cluster.listMessages(c.req.param('id'), {
       limit: parseLimit(c.req.query('limit'), 200),
       afterId: c.req.query('afterId') || undefined,
     })));
 
-    app.get('/api/sessions/:id/queue', (c) => {
+    app.get('/api/sessions/:id/queue', async (c) => {
       const status = promptJobStatusSchema.parse(c.req.query('status') || 'active');
-      return c.json(this.hub.listPromptJobs(c.req.param('id'), {
+      return c.json(await this.cluster.listPromptJobs(c.req.param('id'), {
         statuses: promptJobStatuses(status),
         limit: parseLimit(c.req.query('limit'), 100),
       }));
@@ -350,49 +375,55 @@ export class HubServer {
 
     app.post('/api/sessions/:id/messages', async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
-      const message = await this.hub.sendMessage(c.req.param('id'), input.text, input.controlType, {
+      const message = await this.cluster.sendMessage(c.req.param('id'), {
+        text: input.text,
+        controlType: input.controlType,
         ownerId: input.ownerId,
-        label: input.controlLabel,
+        controlLabel: input.controlLabel,
       });
       return c.json(message, 202);
     });
 
     app.post('/api/sessions/:id/interrupt', async (c) => {
-      await this.hub.interrupt(c.req.param('id'));
+      await this.cluster.interrupt(c.req.param('id'));
       return c.json({ ok: true });
     });
 
-    app.get('/api/approvals', (c) => {
+    app.get('/api/approvals', async (c) => {
       const sessionId = c.req.query('sessionId');
       const statusParam = c.req.query('status');
       const status = statusParam && statusParam !== 'all' ? approvalStatusSchema.parse(statusParam) : (statusParam === 'all' ? undefined : 'pending');
-      return c.json(this.hub.listApprovals({
+      return c.json(await this.cluster.listApprovals({
         sessionId: sessionId || undefined,
         status,
         limit: parseLimit(c.req.query('limit'), 100),
+        localOnly: isLocalScope(c.req.query('scope')),
       }));
     });
 
     app.post('/api/approvals/:id/resolve', async (c) => {
       const input = resolveApprovalSchema.parse(await c.req.json());
-      await this.hub.resolveApproval(c.req.param('id'), input.decision, input.controlType);
+      await this.cluster.resolveApproval(c.req.param('id'), input.decision, input.controlType);
       return c.json({ ok: true });
     });
 
     app.get('/api/bindings', (c) => c.json(this.hub.listBindings()));
     app.get('/api/events', (c) => {
       const sessionId = c.req.query('sessionId') || undefined;
+      const localOnly = isLocalScope(c.req.query('scope'));
       const afterId = parseEventId(c.req.header('last-event-id') || c.req.query('afterId'));
       const stream = new ReadableStream({
         start: (controller) => {
           const encoder = new TextEncoder();
           const send = (data: unknown) => controller.enqueue(encoder.encode(encodeSseFrame(data)));
           for (const event of this.hub.listEvents(afterId, sessionId)) {
+            if (localOnly && isRelayedEvent(event)) continue;
             send(event);
           }
           send({ type: 'ready', createdAt: Date.now() });
           const unsubscribe = this.hub.events.subscribe((event) => {
             if (sessionId && event.sessionId !== sessionId) return;
+            if (localOnly && isRelayedEvent(event)) return;
             send(event);
           });
           const interval = setInterval(() => {
@@ -502,4 +533,26 @@ function workspaceRoot(roots: string[], input: string | undefined): string {
   const root = roots.find((item) => item === input || item === resolve(input));
   if (!root) throw new Error('Unknown workspace root');
   return root;
+}
+
+function aggregateNodeStats(nodes: NodeStatusView[]): { sessions: number; pendingApprovals: number; queuedPrompts: number } {
+  return nodes.reduce((stats, node) => {
+    if (!node.stats) return stats;
+    stats.sessions += node.stats.sessions;
+    stats.pendingApprovals += node.stats.pendingApprovals;
+    stats.queuedPrompts += node.stats.queuedPrompts;
+    return stats;
+  }, {
+    sessions: 0,
+    pendingApprovals: 0,
+    queuedPrompts: 0,
+  });
+}
+
+function isLocalScope(value: string | undefined): boolean {
+  return value === 'local';
+}
+
+function isRelayedEvent(event: { payload?: Record<string, unknown> }): boolean {
+  return typeof event.payload?.nodeId === 'string' && event.payload.nodeId !== LOCAL_NODE_ID;
 }

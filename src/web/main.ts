@@ -24,6 +24,9 @@ type SessionConfig = {
 
 type Session = {
   id: string;
+  localId: string;
+  nodeId: string;
+  nodeName: string;
   title: string;
   cwd: string;
   status: string;
@@ -66,8 +69,14 @@ type PromptJob = {
 };
 
 type Workspace = {
+  id: string;
+  nodeId: string;
+  nodeName: string;
   name: string;
   path: string;
+  homePath: string;
+  connected: boolean;
+  error: string | null;
 };
 
 type DirectoryEntry = {
@@ -76,6 +85,10 @@ type DirectoryEntry = {
 };
 
 type DirectoryListing = {
+  workspaceId: string;
+  nodeId: string;
+  nodeName: string;
+  homePath: string;
   current: string;
   relativePath: string;
   parentPath: string;
@@ -84,6 +97,9 @@ type DirectoryListing = {
 
 type CodexResumeSession = {
   id: string;
+  localId: string;
+  nodeId: string;
+  nodeName: string;
   title: string;
   cwd: string;
   createdAt: string;
@@ -120,6 +136,15 @@ type SessionDetail = {
 type StatusResponse = {
   homePath: string;
   eventCursor: number;
+  nodes: Array<{
+    id: string;
+    name: string;
+    local: boolean;
+    connected: boolean;
+    homePath: string;
+    workspaceRoots: string[];
+    error: string | null;
+  }>;
   codexDefaults: SessionConfig;
   codexRuntimeDefaults: {
     model: string;
@@ -193,11 +218,11 @@ const apiPath = {
   status: '/api/status',
   workspaces: '/api/workspaces',
   sessions: '/api/sessions',
-  sessionsForCwd: (cwd: string) => `/api/sessions?cwd=${encodeURIComponent(cwd)}`,
+  sessionsForCwd: (nodeId: string, cwd: string) => `/api/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}`,
   adoptSession: '/api/sessions/adopt',
-  codexSessions: (cwd: string) => `/api/codex/sessions?cwd=${encodeURIComponent(cwd)}&limit=100`,
-  codexSessionPreview: (threadId: string) => `/api/codex/sessions/${encodeURIComponent(threadId)}/preview`,
-  files: (root: string, path: string) => `/api/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
+  codexSessions: (nodeId: string, cwd: string) => `/api/codex/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}&limit=100`,
+  codexSessionPreview: (nodeId: string, threadId: string) => `/api/codex/sessions/${encodeURIComponent(threadId)}/preview?nodeId=${encodeURIComponent(nodeId)}`,
+  files: (workspaceId: string, path: string) => `/api/files?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(path)}`,
   session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
   approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
   approvalResolve: (id: string) => `/api/approvals/${encodeURIComponent(id)}/resolve`,
@@ -211,6 +236,7 @@ const apiPath = {
 };
 
 let activeSessionId = localStorage.getItem('cx_tg_session') || '';
+let currentWorkspaceId = localStorage.getItem('cx_tg_workspace') || '';
 let sessions: Session[] = [];
 let pathSessions: Session[] = [];
 let adoptSessions: CodexResumeSession[] = [];
@@ -221,9 +247,9 @@ let promptQueue: PromptJob[] = [];
 let workspaces: Workspace[] = [];
 let currentSession: Session | null = null;
 let codexDefaults: SessionConfig = {};
-let currentRoot = localStorage.getItem('cx_tg_root') || '';
 let currentPath = '';
 let homePath = '';
+const homePathByNode = new Map<string, string>();
 let streamBuffer = '';
 let eventSource: EventSource | null = null;
 let eventSourceSessionId = '';
@@ -274,8 +300,9 @@ function clearTokenFromUrl(): void {
   history.replaceState(null, '', url.pathname + url.search + url.hash);
 }
 
-function displayPath(path: string): string {
-  return homePath && (path === homePath || path.startsWith(`${homePath}/`)) ? `~${path.slice(homePath.length)}` : path;
+function displayPath(path: string, nodeId?: string): string {
+  const base = homePathByNode.get(nodeId || currentWorkspace()?.nodeId || 'local') || homePath;
+  return base && (path === base || path.startsWith(`${base}/`)) ? `~${path.slice(base.length)}` : path;
 }
 
 function truncateText(text: string, limit: number): string {
@@ -307,6 +334,10 @@ async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
 async function loadAll(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
   homePath = status.homePath;
+  homePathByNode.clear();
+  status.nodes.forEach((node) => {
+    if (node.homePath) homePathByNode.set(node.id, node.homePath);
+  });
   codexDefaults = status.codexDefaults || {};
   setRuntimeDefaultLabels(status.codexRuntimeDefaults);
   setRuntimeControls('new', codexDefaults);
@@ -325,8 +356,8 @@ async function loadAll(): Promise<void> {
 async function loadWorkspaces(): Promise<void> {
   workspaces = await api<Workspace[]>(apiPath.workspaces);
   if (!workspaces.length) return;
-  if (!workspaces.some((workspace) => workspace.path === currentRoot)) currentRoot = workspaces[0]!.path;
-  localStorage.setItem('cx_tg_root', currentRoot);
+  if (!workspaces.some((workspace) => workspace.id === currentWorkspaceId)) currentWorkspaceId = workspaces[0]!.id;
+  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
   renderWorkspaceRoots();
   await loadDirs(currentPath);
 }
@@ -336,8 +367,8 @@ function renderWorkspaceRoots(): void {
   select.innerHTML = '';
   for (const workspace of workspaces) {
     const option = document.createElement('sl-option');
-    option.setAttribute('value', workspace.path);
-    option.textContent = `${workspace.name} · ${workspace.path}`;
+    option.setAttribute('value', workspace.id);
+    option.textContent = `${workspace.nodeName} · ${workspace.name} · ${displayPath(workspace.path, workspace.nodeId)}`;
     select.appendChild(option);
   }
   if (workspaces.length === 1) {
@@ -345,16 +376,19 @@ function renderWorkspaceRoots(): void {
     return;
   }
   select.hidden = false;
-  select.value = currentRoot;
+  select.value = currentWorkspaceId;
 }
 
 async function loadDirs(path: string): Promise<void> {
-  if (!currentRoot) return;
-  const data = await api<DirectoryListing>(apiPath.files(currentRoot, path));
+  const workspace = currentWorkspace();
+  if (!workspace) return;
+  const data = await api<DirectoryListing>(apiPath.files(workspace.id, path));
+  currentWorkspaceId = data.workspaceId;
+  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
   currentPath = data.relativePath || '';
   element<ValueElement>('cwd').value = data.current;
   renderDirs(data);
-  await loadPathSessionChoices(data.current);
+  await loadPathSessionChoices(data.current, data.nodeId);
 }
 
 function renderDirs(data: DirectoryListing): void {
@@ -377,8 +411,8 @@ function renderDirs(data: DirectoryListing): void {
   if (!box.childElementCount) box.appendChild(emptyState('No child directories'));
 }
 
-async function loadPathSessionChoices(cwd = element<ValueElement>('cwd').value.trim()): Promise<void> {
-  if (!cwd) {
+async function loadPathSessionChoices(cwd = element<ValueElement>('cwd').value.trim(), nodeId = currentWorkspace()?.nodeId): Promise<void> {
+  if (!cwd || !nodeId) {
     pathSessions = [];
     adoptSessions = [];
     renderPathSessions();
@@ -390,10 +424,14 @@ async function loadPathSessionChoices(cwd = element<ValueElement>('cwd').value.t
   renderPathSessions();
   try {
     const [hubSessions, codexSessions] = await Promise.all([
-      api<Session[]>(apiPath.sessionsForCwd(cwd)),
-      api<CodexResumeSessionsResponse>(apiPath.codexSessions(cwd)),
+      api<Session[]>(apiPath.sessionsForCwd(nodeId, cwd)),
+      api<CodexResumeSessionsResponse>(apiPath.codexSessions(nodeId, cwd)),
     ]);
-    if (requestId !== pathSessionsRequestId || element<ValueElement>('cwd').value.trim() !== codexSessions.cwd) return;
+    if (
+      requestId !== pathSessionsRequestId
+      || element<ValueElement>('cwd').value.trim() !== codexSessions.cwd
+      || currentWorkspace()?.nodeId !== nodeId
+    ) return;
     pathSessions = hubSessions;
     adoptSessions = codexSessions.sessions;
   } finally {
@@ -408,6 +446,10 @@ function formatDateTime(value: string | number): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
+}
+
+function currentWorkspace(): Workspace | undefined {
+  return workspaces.find((workspace) => workspace.id === currentWorkspaceId);
 }
 
 async function loadSession(): Promise<void> {
@@ -441,7 +483,12 @@ async function loadSession(): Promise<void> {
 
 function syncSessionLists(session: Session): void {
   sessions = upsertSession(sessions, session, true);
-  pathSessions = upsertSession(pathSessions, session, session.cwd === element<ValueElement>('cwd').value.trim());
+  const workspace = currentWorkspace();
+  pathSessions = upsertSession(pathSessions, session, Boolean(
+    workspace
+    && session.nodeId === workspace.nodeId
+    && session.cwd === element<ValueElement>('cwd').value.trim(),
+  ));
   renderRecentSessions();
   renderPathSessions();
 }
@@ -502,8 +549,8 @@ function hubSessionButton(session: Session, showPath: boolean): ButtonElement {
   const meta = document.createElement('span');
   meta.className = 'session-path muted';
   meta.textContent = showPath
-    ? displayPath(session.cwd)
-    : [`Updated ${formatDateTime(session.updatedAt)}`, shortId(session.id)].filter(Boolean).join(' · ');
+    ? [session.nodeName, displayPath(session.cwd, session.nodeId)].filter(Boolean).join(' · ')
+    : [`Updated ${formatDateTime(session.updatedAt)}`, shortId(session.localId)].filter(Boolean).join(' · ');
   button.append(line, meta);
   return button;
 }
@@ -526,8 +573,9 @@ function codexSessionButton(session: CodexResumeSession): ButtonElement {
   const meta = document.createElement('span');
   meta.className = 'session-path muted';
   meta.textContent = [
+    session.nodeName,
     `Updated ${formatDateTime(session.updatedAt)}`,
-    shortId(session.id),
+    shortId(session.localId),
     session.originator || '',
   ].filter(Boolean).join(' · ');
   button.append(line, meta);
@@ -544,6 +592,7 @@ function sectionLabel(text: string): HTMLElement {
 async function selectHubSession(session: Session): Promise<void> {
   activeSessionId = session.id;
   localStorage.setItem('cx_tg_session', activeSessionId);
+  await syncWorkspaceToSession(session);
   renderRecentSessions();
   renderPathSessions();
   await loadSession();
@@ -551,7 +600,7 @@ async function selectHubSession(session: Session): Promise<void> {
 }
 
 async function showAdoptPreview(codexSession: CodexResumeSession): Promise<void> {
-  const preview = await api<CodexSessionPreview>(apiPath.codexSessionPreview(codexSession.id));
+  const preview = await api<CodexSessionPreview>(apiPath.codexSessionPreview(codexSession.nodeId, codexSession.localId));
   if (preview.managedSessionId) throw new Error(`Codex thread is already managed by Hub session: ${preview.managedSessionId}`);
   pendingAdoptSession = codexSession;
   pendingAdoptPreview = preview;
@@ -562,9 +611,10 @@ async function showAdoptPreview(codexSession: CodexResumeSession): Promise<void>
 function renderAdoptPreview(preview: CodexSessionPreview): void {
   element('adopt-title').textContent = preview.title;
   element('adopt-meta').textContent = [
-    displayPath(preview.cwd),
+    preview.nodeName,
+    displayPath(preview.cwd, preview.nodeId),
     `Updated ${formatDateTime(preview.updatedAt)}`,
-    shortId(preview.id),
+    shortId(preview.localId),
     `${preview.messageCount} messages`,
   ].filter(Boolean).join(' · ');
 
@@ -601,7 +651,8 @@ async function adoptPendingCodexSession(): Promise<void> {
   const session = await api<Session>(apiPath.adoptSession, {
     method: 'POST',
     body: JSON.stringify({
-      threadId: pendingAdoptSession.id,
+      nodeId: pendingAdoptSession.nodeId,
+      threadId: pendingAdoptSession.localId,
       cwd: pendingAdoptPreview.cwd,
       title: pendingAdoptPreview.title,
       importTranscript: true,
@@ -634,13 +685,14 @@ function renderSessionHeader(): void {
   if (!currentSession) return;
   const config = currentSession.config || {};
   element('session-title').textContent = currentSession.title;
-  element('session-meta').textContent = displayPath(currentSession.cwd);
+  element('session-meta').textContent = `${currentSession.nodeName} · ${displayPath(currentSession.cwd, currentSession.nodeId)}`;
 
   const detail = element('session-detail');
   detail.innerHTML = '';
   const chips = document.createElement('div');
   chips.className = 'meta-row';
   [
+    ['node', currentSession.nodeName],
     ['status', currentSession.status],
     ['control', currentSession.controlLabel || 'shared'],
     ['model', config.model || '-'],
@@ -650,7 +702,7 @@ function renderSessionHeader(): void {
   detail.appendChild(chips);
 
   const runtime = [
-    ['Hub session', shortId(currentSession.id)],
+    ['Hub session', shortId(currentSession.localId)],
     ['Codex thread', shortId(currentSession.codexThreadId)],
     ['Codex turn', shortId(currentSession.currentTurnId)],
     ['lease', currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleTimeString() : ''],
@@ -675,6 +727,21 @@ function metaChip(label: string, value: string): HTMLElement {
 
 function shortId(value: string | null): string {
   return value ? value.slice(0, 8) : '';
+}
+
+async function syncWorkspaceToSession(session: Session): Promise<void> {
+  const matches = workspaces
+    .filter((workspace) => workspace.nodeId === session.nodeId)
+    .filter((workspace) => session.cwd === workspace.path || session.cwd.startsWith(`${workspace.path}/`))
+    .sort((a, b) => b.path.length - a.path.length);
+  const workspace = matches[0];
+  if (!workspace) return;
+  if (currentWorkspaceId !== workspace.id) {
+    currentWorkspaceId = workspace.id;
+    localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
+  }
+  const relativePath = session.cwd === workspace.path ? '' : session.cwd.slice(workspace.path.length + 1);
+  await loadDirs(relativePath);
 }
 
 function renderActionState(): void {
@@ -1022,11 +1089,15 @@ function notifyAssistantMessage(message: Message): void {
 async function refreshNotificationCursor(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
   homePath = status.homePath;
+  status.nodes.forEach((node) => {
+    if (node.homePath) homePathByNode.set(node.id, node.homePath);
+  });
   rememberNotificationEventCursor(status.eventCursor);
 }
 
 function sessionTitle(sessionId: string): string {
-  return sessions.find((session) => session.id === sessionId)?.title || currentSession?.title || 'CX TG';
+  const session = sessions.find((item) => item.id === sessionId) || currentSession;
+  return session ? `${session.nodeName} · ${session.title}` : 'CX TG';
 }
 
 function setButtonLabel(button: HTMLElement, label: string): void {
@@ -1132,9 +1203,9 @@ function closeSidebarOnMobile(): void {
 }
 
 element<ValueElement>('workspace-root').addEventListener('sl-change', (event) => {
-  currentRoot = (event.currentTarget as ValueElement).value;
+  currentWorkspaceId = (event.currentTarget as ValueElement).value;
   currentPath = '';
-  localStorage.setItem('cx_tg_root', currentRoot);
+  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
   run(loadDirs(''));
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
@@ -1202,11 +1273,13 @@ element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
   event.preventDefault();
   const formElement = event.currentTarget as HTMLFormElement;
   runAction(submitButton(formElement), async () => {
+    const workspace = currentWorkspace();
+    if (!workspace) throw new Error('Select a workspace');
     const cwd = element<ValueElement>('cwd').value.trim();
     const title = element<ValueElement>('new-title').value.trim();
     const session = await api<Session>(apiPath.sessions, {
       method: 'POST',
-      body: JSON.stringify({ cwd, title, config: runtimeConfigFromControls('new') }),
+      body: JSON.stringify({ nodeId: workspace.nodeId, cwd, title, config: runtimeConfigFromControls('new') }),
     });
     activeSessionId = session.id;
     localStorage.setItem('cx_tg_session', activeSessionId);
