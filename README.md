@@ -94,7 +94,7 @@ Open:
 https://gateway.1662803.xyz/apps/cx-tg/?token=<access-token>
 ```
 
-The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
+The token URL is a bootstrap login. Hub stores the access token in an HttpOnly cookie and redirects to the clean Web URL before serving the console, assets, REST APIs, and EventSource streams. Opening Web without a valid token cookie returns `401`.
 The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
 Web shows recently used Hub-managed sessions at the top of the sidebar. The workspace panel selects a directory, then shows Hub-managed sessions for that directory and native Codex sessions that can be adopted into Hub. On mobile, the sidebar opens from the top-left sessions button.
 
@@ -212,9 +212,6 @@ Caddy keeps the `/apps/cx-tg` prefix when proxying:
 gateway.1662803.xyz {
   @cx_tg path /apps/cx-tg /apps/cx-tg/*
   handle @cx_tg {
-    basic_auth {
-      ravvss <caddy-password-hash>
-    }
     reverse_proxy 127.0.0.1:3030
   }
 
@@ -224,7 +221,7 @@ gateway.1662803.xyz {
 }
 ```
 
-Use the existing gateway public routes before the final `handle` when this snippet is merged into the live Caddyfile.
+Use the existing gateway public routes before the final `handle` when this snippet is merged into the live Caddyfile. The `/apps/cx-tg` route uses cx-tg token auth; the rest of gateway can keep its existing Caddy Basic Auth policy.
 
 ## Telegram
 

@@ -654,7 +654,17 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
   const context = createTestApp();
 
   try {
-    const page = await context.app.request('/', { headers: { Accept: 'text/html' } });
+    const blockedPage = await context.app.request('/', { headers: { Accept: 'text/html' } });
+    assert.equal(blockedPage.status, 401);
+
+    const login = await context.app.request(`/?token=${encodeURIComponent(context.config.server.accessToken)}`, { headers: { Accept: 'text/html' } });
+    const cookie = login.headers.get('set-cookie') || '';
+    assert.equal(login.status, 302);
+    assert.equal(login.headers.get('location'), '/');
+    assert.match(cookie, /cx_tg_auth=/);
+    assert.match(cookie, /Path=\//);
+
+    const page = await context.app.request('/', { headers: { Accept: 'text/html', Cookie: cookie } });
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-type') || '', /text\/html/);
@@ -662,17 +672,20 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     assert.match(html, /\/assets\/main\.js/);
     assert.doesNotMatch(html, /\/client\.ts/);
 
-    const css = await context.app.request('/assets/main.css');
+    const css = await context.app.request('/assets/main.css', { headers: { Cookie: cookie } });
     assert.equal(css.status, 200);
     assert.match(css.headers.get('content-type') || '', /text\/css/);
     assert.match(await css.text(), /\.shell/);
 
-    const js = await context.app.request('/assets/main.js');
+    const js = await context.app.request('/assets/main.js', { headers: { Cookie: cookie } });
     assert.equal(js.status, 200);
     assert.match(js.headers.get('content-type') || '', /javascript/);
     assert.match(await js.text(), /withCredentials: true/);
 
-    const missingAsset = await context.app.request('/assets/missing.js', { headers: { Accept: 'text/html' } });
+    const blockedAsset = await context.app.request('/assets/main.css');
+    assert.equal(blockedAsset.status, 401);
+
+    const missingAsset = await context.app.request('/assets/missing.js', { headers: { Accept: 'text/html', Cookie: cookie } });
     assert.equal(missingAsset.status, 404);
     assert.match(missingAsset.headers.get('content-type') || '', /application\/json/);
 
@@ -684,7 +697,7 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     assert.match(apiMissing.headers.get('content-type') || '', /application\/json/);
     assert.deepEqual(await apiMissing.json(), { error: { message: 'Not found' } });
 
-    const fallback = await context.app.request('/sessions/local', { headers: { Accept: 'text/html' } });
+    const fallback = await context.app.request('/sessions/local', { headers: { Accept: 'text/html', Cookie: cookie } });
     assert.equal(fallback.status, 200);
     assert.match(await fallback.text(), /\/assets\/main\.js/);
   } finally {
@@ -703,11 +716,21 @@ test('web, API, and event routes mount below publicUrl path', async () => {
   try {
     const session = createSession(context.store);
 
-    const redirect = await context.app.request('/apps/cx-tg');
-    assert.equal(redirect.status, 302);
-    assert.equal(redirect.headers.get('location'), '/apps/cx-tg/');
+    const blockedPage = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html' } });
+    assert.equal(blockedPage.status, 401);
 
-    const page = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html' } });
+    const redirect = await context.app.request(`/apps/cx-tg?token=${encodeURIComponent(context.config.server.accessToken)}`);
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.get('location'), `/apps/cx-tg/?token=${encodeURIComponent(context.config.server.accessToken)}`);
+
+    const login = await context.app.request(`/apps/cx-tg/?token=${encodeURIComponent(context.config.server.accessToken)}`, { headers: { Accept: 'text/html' } });
+    const cookie = login.headers.get('set-cookie') || '';
+    assert.equal(login.status, 302);
+    assert.equal(login.headers.get('location'), '/apps/cx-tg/');
+    assert.match(cookie, /Path=\/apps\/cx-tg/);
+    assert.match(cookie, /Secure/);
+
+    const page = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html', Cookie: cookie } });
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /<base href="\/apps\/cx-tg\/">/);
@@ -715,21 +738,12 @@ test('web, API, and event routes mount below publicUrl path', async () => {
     assert.match(html, /\/apps\/cx-tg\/assets\/main\.css/);
     assert.match(html, /\/apps\/cx-tg\/assets\/main\.js/);
 
-    const css = await context.app.request('/apps/cx-tg/assets/main.css');
+    const css = await context.app.request('/apps/cx-tg/assets/main.css', { headers: { Cookie: cookie } });
     assert.equal(css.status, 200);
     assert.match(await css.text(), /\.shell/);
 
     const rootApi = await context.app.request('/api/status', { headers: authHeaders(context.config) });
     assert.equal(rootApi.status, 404);
-
-    const login = await context.app.request('/apps/cx-tg/api/auth', {
-      method: 'POST',
-      headers: authHeaders(context.config),
-    });
-    const cookie = login.headers.get('set-cookie') || '';
-    assert.equal(login.status, 200);
-    assert.match(cookie, /Path=\/apps\/cx-tg/);
-    assert.match(cookie, /Secure/);
 
     const status = await json<{ server: { basePath: string } }>(await context.app.request(
       '/apps/cx-tg/api/status',

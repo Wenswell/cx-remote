@@ -453,8 +453,19 @@ export class HubServer {
     });
 
     if (basePath) {
-      app.get(basePath, (c) => c.redirect(`${basePath}/`));
+      app.get(basePath, (c) => c.redirect(`${basePath}/${requestQuery(c.req.url)}`));
     }
+    app.use(route('/assets/*'), webAuthMiddleware(this.config.server.accessToken, this.config.server.publicUrl, basePath));
+    app.use(basePath ? route('/*') : '*', async (c, next) => {
+      const path = stripBasePath(c.req.path, basePath);
+      if (path.startsWith('/api/') || c.req.method !== 'GET' || !acceptsHtml(c.req.header('accept'))) {
+        await next();
+        return;
+      }
+      const result = webAuthResult(c, this.config.server.accessToken, this.config.server.publicUrl, basePath);
+      if (result) return result;
+      await next();
+    });
     app.get(route('/'), serveWebIndex);
     app.get(route('/assets/*'), serveWebAsset);
     app.get(basePath ? route('/*') : '*', async (c, next) => {
@@ -489,10 +500,40 @@ function renderWebIndex(webDistDir: string, basePath: string): string {
     : `${bootstrap}\n${normalizedHtml}`;
 }
 
+function webAuthMiddleware(token: string, publicUrl: string, basePath: string) {
+  return async (c: Context, next: () => Promise<void>) => {
+    const result = webAuthResult(c, token, publicUrl, basePath);
+    if (result) return result;
+    await next();
+  };
+}
+
+function webAuthResult(c: Context, token: string, publicUrl: string, basePath: string): Response | undefined {
+  const url = new URL(c.req.url);
+  const tokenParam = url.searchParams.get('token');
+  if (tokenParam !== null) {
+    if (tokenParam !== token) return new Response('Unauthorized', { status: 401 });
+    url.searchParams.delete('token');
+    const redirectTo = `${url.pathname}${url.search}`;
+    const response = c.redirect(redirectTo || `${basePath || '/'}`);
+    response.headers.set('Set-Cookie', authCookie(token, isSecureCookie(publicUrl), basePath));
+    return response;
+  }
+  if (!isAuthorizedRequest(c.req.header('authorization'), c.req.header('cookie'), token)) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  return undefined;
+}
+
 function routePath(basePath: string, path: string): string {
   if (!basePath) return path;
   if (path === '/') return `${basePath}/`;
   return `${basePath}${path}`;
+}
+
+function requestQuery(rawUrl: string): string {
+  const query = new URL(rawUrl).search;
+  return query || '';
 }
 
 function stripBasePath(path: string, basePath: string): string {

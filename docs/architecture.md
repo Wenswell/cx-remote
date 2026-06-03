@@ -107,7 +107,7 @@ the Hub serves:
 /apps/cx-tg/api/*        REST and SSE
 ```
 
-The reverse proxy preserves the prefix. Hono redirects `/apps/cx-tg` to `/apps/cx-tg/`, injects the browser base path into `index.html`, and scopes the Web auth cookie to the mount path. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
+The reverse proxy preserves the prefix. Hono redirects `/apps/cx-tg` to `/apps/cx-tg/`, accepts the bootstrap `?token=<access-token>` URL, sets the Web auth cookie, and redirects to the clean URL before serving the browser console. Web HTML and assets require the token cookie. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
 
 The Hub API uses bearer auth and JSON errors:
 
@@ -152,7 +152,7 @@ GET    /api/events
 
 These endpoint paths are relative to the mount path. Under `/apps/cx-tg`, `GET /api/status` becomes `GET /apps/cx-tg/api/status`.
 
-API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
+API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web bootstrap accepts `?token=<access-token>` on HTML and asset routes, then stores the cookie and removes the token from the URL. `/api/events` does not accept token query parameters.
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/status` also returns `nodes[]`, the current node plus any configured peers. `stats` is aggregated across reachable nodes.
@@ -182,7 +182,7 @@ https://gateway.1662803.xyz/apps/cx-tg
   -> peer Hubs on 10.126.126.2:3030 and 10.126.126.3:3030
 ```
 
-Caddy matches `/apps/cx-tg` and `/apps/cx-tg/*`, then proxies to the gateway Hub while preserving the path prefix. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-tg` and `cluster.peers` entries for the peer LAN URLs.
+Caddy matches `/apps/cx-tg` and `/apps/cx-tg/*`, then proxies to the gateway Hub while preserving the path prefix. The cx-tg route uses Hub token auth. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-tg` and `cluster.peers` entries for the peer LAN URLs.
 
 ## Control Ownership
 
