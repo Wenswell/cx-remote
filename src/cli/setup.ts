@@ -7,13 +7,13 @@ import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/t
 
 export async function runSetup(): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    throw new Error('cx-tg setup requires an interactive terminal; use cx-tg config set for scripts');
+    throw new Error('cx-remote setup requires an interactive terminal; use cx-remote config set for scripts');
   }
 
   const rl = createInterface({ input, output });
   try {
     const current = readSettings();
-    console.log('CX TG setup');
+    console.log('CX Remote setup');
     console.log(`Settings: ${getSettingsPath()}`);
 
     const home = defaultConfigHome();
@@ -89,7 +89,7 @@ export async function runSetup(): Promise<void> {
       },
       storage: {
         ...current.storage,
-        dbPath: current.storage.dbPath || join(home, 'cx-tg.db'),
+        dbPath: current.storage.dbPath || join(home, 'cx-remote.db'),
       },
     };
 

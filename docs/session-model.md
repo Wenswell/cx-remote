@@ -1,15 +1,15 @@
 # Session Model
 
-`cx-tg` uses node-owned Hub sessions as its product boundary. A Hub session is still the record shared by Web, Telegram, and CLI, but the owning node can be local or remote. The session stores the working directory, runtime config, control owner, prompt queue, approvals, Hub messages, Hub events, and the mapped Codex thread id on that node.
+`cx-remote` uses node-owned Hub sessions as its product boundary. A Hub session is still the record shared by Web, Telegram, and CLI, but the owning node can be local or remote. The session stores the working directory, runtime config, control owner, prompt queue, approvals, Hub messages, Hub events, and the mapped Codex thread id on that node.
 
-Native Codex sessions become visible in `cx-tg` after adoption on the owning node. Adoption creates a Hub session with an existing `codexThreadId`; future prompts then go through that node Hub and stay synchronized across Web, Telegram, and CLI.
+Native Codex sessions become visible in `cx-remote` after adoption on the owning node. Adoption creates a Hub session with an existing `codexThreadId`; future prompts then go through that node Hub and stay synchronized across Web, Telegram, and CLI.
 
 ## Flows
 
 ```text
 Create managed session
   POST /api/sessions { nodeId?, cwd, config? }
-  cx-tg new --cwd <path> [--node <node-id>] [runtime flags]
+  cx-remote new --cwd <path> [--node <node-id>] [runtime flags]
       │
       ▼
   Hub Session with empty codexThreadId
@@ -26,7 +26,7 @@ Adopt Codex session
   Web: GET /api/codex/sessions/:threadId/preview?nodeId=<node>
   Web: choose an unmanaged Codex session recorded for that cwd on that node
   POST /api/sessions/adopt { nodeId, threadId, cwd, config?, importTranscript: true }
-  cx-tg adopt --thread <thread-id> --cwd <path> [--node <node-id>] --import [runtime flags]
+  cx-remote adopt --thread <thread-id> --cwd <path> [--node <node-id>] --import [runtime flags]
       │
       ▼
   Hub Session with codexThreadId
@@ -48,7 +48,7 @@ Adopt Codex session
 - Web adoption imports the native Codex transcript into Hub messages before opening the session.
 - CLI/API adoption registers an explicit Codex thread id under Hub control on the selected node. Add `--import` or `importTranscript: true` to import the stored transcript into Hub messages.
 - Runtime startup resumes an adopted or previously persisted Codex thread before starting the next turn.
-- Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-tg session-config`.
+- Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-remote session-config`.
 - A central Hub can proxy multiple remote Hub peers over the LAN. Remote sessions keep their runtime, queue, approvals, and persistence on the owning node; the central Hub aggregates browsing, switching, and notifications.
 - Search is enabled by default. `codex.model=auto` and `codex.reasoningEffort=default` leave those choices to Codex; Web displays the inherited values as `Default(<resolved value>)`.
 - `permissionMode` accepts `default`, `read-only`, `safe-yolo`, and `yolo`; `--dangerously-bypass-approvals-and-sandbox` maps to `permissionMode=yolo`.

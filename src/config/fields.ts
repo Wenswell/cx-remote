@@ -15,10 +15,10 @@ export interface SettingField {
 }
 
 export const SETTING_FIELDS: SettingField[] = [
-  { key: 'server.host', path: ['server', 'host'], type: 'string', env: 'CX_TG_HOST', restartRequired: true, description: 'Hub listen host' },
-  { key: 'server.port', path: ['server', 'port'], type: 'number', env: 'CX_TG_PORT', restartRequired: true, description: 'Hub listen port' },
-  { key: 'server.publicUrl', path: ['server', 'publicUrl'], type: 'string', env: 'CX_TG_PUBLIC_URL', description: 'External Web URL; path becomes the Hub mount path' },
-  { key: 'server.accessToken', path: ['server', 'accessToken'], type: 'string', env: 'CX_TG_ACCESS_TOKEN', secret: true, restartRequired: true, description: 'API and Web bearer token' },
+  { key: 'server.host', path: ['server', 'host'], type: 'string', env: 'CX_REMOTE_HOST', restartRequired: true, description: 'Hub listen host' },
+  { key: 'server.port', path: ['server', 'port'], type: 'number', env: 'CX_REMOTE_PORT', restartRequired: true, description: 'Hub listen port' },
+  { key: 'server.publicUrl', path: ['server', 'publicUrl'], type: 'string', env: 'CX_REMOTE_PUBLIC_URL', description: 'External Web URL; path becomes the Hub mount path' },
+  { key: 'server.accessToken', path: ['server', 'accessToken'], type: 'string', env: 'CX_REMOTE_ACCESS_TOKEN', secret: true, restartRequired: true, description: 'API and Web bearer token' },
   { key: 'cluster.name', path: ['cluster', 'name'], type: 'string', restartRequired: true, description: 'Display name for this Hub node' },
   { key: 'cluster.peers', path: ['cluster', 'peers'], type: 'json', secret: true, restartRequired: true, description: 'Remote Hub peer definitions' },
   { key: 'workspace.roots', path: ['workspace', 'roots'], type: 'string[]', restartRequired: true, description: 'Allowed workspace roots' },
@@ -37,7 +37,7 @@ export const SETTING_FIELDS: SettingField[] = [
   { key: 'approvals.autoApproveCommands', path: ['approvals', 'autoApproveCommands'], type: 'string[]', env: 'AUTO_APPROVE_COMMANDS', description: 'Command prefixes approved automatically' },
   { key: 'approvals.autoApproveReadonly', path: ['approvals', 'autoApproveReadonly'], type: 'boolean', env: 'AUTO_APPROVE_READONLY', description: 'Automatically approve read-only commands' },
   { key: 'approvals.timeoutMs', path: ['approvals', 'timeoutMs'], type: 'number', description: 'Approval timeout in milliseconds' },
-  { key: 'storage.dbPath', path: ['storage', 'dbPath'], type: 'string', env: 'CX_TG_DB_PATH', restartRequired: true, description: 'SQLite database path' },
+  { key: 'storage.dbPath', path: ['storage', 'dbPath'], type: 'string', env: 'CX_REMOTE_DB_PATH', restartRequired: true, description: 'SQLite database path' },
   { key: 'log.level', path: ['log', 'level'], type: 'enum', env: 'LOG_LEVEL', choices: ['debug', 'info', 'warn', 'error'], description: 'Log level' },
   { key: 'log.file', path: ['log', 'file'], type: 'string', env: 'LOG_FILE', restartRequired: true, description: 'Log file path' },
   { key: 'log.console', path: ['log', 'console'], type: 'boolean', env: 'LOG_CONSOLE', restartRequired: true, description: 'Console logging' },

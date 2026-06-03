@@ -1,4 +1,4 @@
-# cx-tg
+# cx-remote
 
 Local Codex Control Hub. Use Web, Telegram, or the terminal CLI to control Hub-managed Codex sessions on this machine.
 
@@ -24,17 +24,17 @@ pnpm build
 The project requires Node.js 25 or newer because it uses `node:sqlite`.
 `pnpm build` runs the Vite Web build into `dist/web` and the Node server build into `dist`.
 
-Install the built package globally from a checkout or packed tarball:
+Install globally from GitHub:
 
 ```bash
-pnpm add -g /home/ilove/Documents/repos/cx-tg
-cx-tg --help
+pnpm add -g github:Wenswell/cx-remote
+cx-remote --help
 ```
 
-After registry publication the install command is:
+Install from a local checkout:
 
 ```bash
-pnpm add -g cx-tg
+pnpm add -g /path/to/cx-remote
 ```
 
 Development commands:
@@ -55,20 +55,20 @@ pnpm start
 Equivalent:
 
 ```bash
-cx-tg hub
+cx-remote hub
 ```
 
 Run the interactive setup when you want to configure paths, Codex defaults, Web, and Telegram before starting:
 
 ```bash
-cx-tg setup
+cx-remote setup
 ```
 
 On first start, the app creates:
 
 ```text
-~/.cx-tg/settings.json
-~/.cx-tg/cx-tg.db
+~/.cx-remote/settings.json
+~/.cx-remote/cx-remote.db
 ```
 
 The terminal prints the Web URL, token, and settings path.
@@ -84,14 +84,14 @@ http://127.0.0.1:3030/?token=<access-token>
 When `server.publicUrl` includes a path, that path is the Hub mount path. For a gateway deployment:
 
 ```bash
-cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
-cx-tg hub
+cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
+cx-remote hub
 ```
 
 Open:
 
 ```text
-https://gateway.1662803.xyz/apps/cx-tg/?token=<access-token>
+https://gateway.1662803.xyz/apps/cx-remote/?token=<access-token>
 ```
 
 The token URL is a bootstrap login. Hub stores the access token in an HttpOnly cookie and redirects to the clean Web URL before serving the console, assets, REST APIs, and EventSource streams. Opening Web without a valid token cookie returns `401`.
@@ -119,67 +119,72 @@ The Web console can:
 ## CLI
 
 ```bash
-cx-tg setup
-cx-tg config list
-cx-tg config set workspace.roots /home/ilove/Documents/repos
-cx-tg config validate
-cx-tg status
-cx-tg sessions
-cx-tg session <session-id>
-cx-tg messages <session-id>
-cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
-cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg --import
-cx-tg session-config <session-id> --search --permission-mode yolo
-cx-tg send <session-id> "check git status"
-cx-tg attach <session-id>
-cx-tg attach <session-id> --claim
-cx-tg stop <session-id>
-cx-tg rename <session-id> "new title"
-cx-tg delete <session-id>
-cx-tg approvals --all
-cx-tg approve <approval-id> approved
-cx-tg doctor
+cx-remote setup
+cx-remote config list
+cx-remote config set workspace.roots /home/ilove/Documents/repos
+cx-remote config validate
+cx-remote status
+cx-remote sessions
+cx-remote session <session-id>
+cx-remote messages <session-id>
+cx-remote new --cwd /home/ilove/Documents/repos/cx-remote
+cx-remote adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-remote --import
+cx-remote session-config <session-id> --search --permission-mode yolo
+cx-remote send <session-id> "check git status"
+cx-remote attach <session-id>
+cx-remote attach <session-id> --claim
+cx-remote stop <session-id>
+cx-remote rename <session-id> "new title"
+cx-remote delete <session-id>
+cx-remote approvals --all
+cx-remote approve <approval-id> approved
+cx-remote doctor
 ```
 
-`cc-hub` is kept as an alias for the same binary.
+Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-remote adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
-Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
-
-`cx-tg` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
+`cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 
 ```bash
-cx-tg new --cwd <path> --search
-cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
-cx-tg new --cwd <path> --permission-mode read-only
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --import --permission-mode safe-yolo
-cx-tg session-config <session-id> --search --permission-mode yolo
+cx-remote new --cwd <path> --search
+cx-remote new --cwd <path> --model gpt-5.5 --reasoning-effort high
+cx-remote new --cwd <path> --permission-mode read-only
+cx-remote adopt --thread <codex-thread-id> --cwd <path> --import --permission-mode safe-yolo
+cx-remote session-config <session-id> --search --permission-mode yolo
 ```
 
 Search is enabled by default. Use `--no-search` to disable it for one session. `model=auto` and `reasoningEffort=default` leave those choices to Codex; Web labels them as `Default(<resolved value>)`. `--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
 
 ## LAN Gateway
 
-Recommended topology for `gateway.1662803.xyz/apps/cx-tg`:
+Recommended topology for `gateway.1662803.xyz/apps/cx-remote`:
 
 ```text
 Browser
-  -> gateway.1662803.xyz/apps/cx-tg
+  -> gateway.1662803.xyz/apps/cx-remote
   -> Caddy on 10.126.126.1
-  -> central cx-tg Hub on 127.0.0.1:3030
+  -> central cx-remote Hub on 127.0.0.1:3030
   -> peer Hubs on 10.126.126.2:3030 and 10.126.126.3:3030
+```
+
+Install the same global CLI on every Hub node:
+
+```bash
+pnpm add -g github:Wenswell/cx-remote
+cx-remote --help
 ```
 
 Central Hub on the gateway server:
 
 ```bash
-cx-tg config set cluster.name gateway
-cx-tg config set server.host 127.0.0.1
-cx-tg config set server.port 3030
-cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
-cx-tg config set server.accessToken '<central-token>'
-cx-tg config set workspace.roots '[]'
-cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
-cx-tg hub
+cx-remote config set cluster.name gateway
+cx-remote config set server.host 127.0.0.1
+cx-remote config set server.port 3030
+cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
+cx-remote config set server.accessToken '<central-token>'
+cx-remote config set workspace.roots '[]'
+cx-remote config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+cx-remote hub
 ```
 
 `workspace.roots=[]` makes the gateway Hub a pure aggregator. Web will show peer workspaces and sessions, while the gateway server stays out of workspace selection.
@@ -187,33 +192,35 @@ cx-tg hub
 Peer Hub on `10.126.126.2`:
 
 ```bash
-cx-tg config set cluster.name mac
-cx-tg config set server.host 0.0.0.0
-cx-tg config set server.port 3030
-cx-tg config set server.accessToken '<mac-token>'
-cx-tg config set cluster.peers '[]'
-cx-tg config set workspace.roots /home/wswensw
-cx-tg hub
+pnpm add -g github:Wenswell/cx-remote
+cx-remote config set cluster.name mac
+cx-remote config set server.host 0.0.0.0
+cx-remote config set server.port 3030
+cx-remote config set server.accessToken '<mac-token>'
+cx-remote config set cluster.peers '[]'
+cx-remote config set workspace.roots /home/wswensw
+cx-remote hub
 ```
 
 Peer Hub on `10.126.126.3`:
 
 ```bash
-cx-tg config set cluster.name mint
-cx-tg config set server.host 0.0.0.0
-cx-tg config set server.port 3030
-cx-tg config set server.accessToken '<mint-token>'
-cx-tg config set cluster.peers '[]'
-cx-tg config set workspace.roots /home/ilove/Documents/repos
-cx-tg hub
+pnpm add -g github:Wenswell/cx-remote
+cx-remote config set cluster.name mint
+cx-remote config set server.host 0.0.0.0
+cx-remote config set server.port 3030
+cx-remote config set server.accessToken '<mint-token>'
+cx-remote config set cluster.peers '[]'
+cx-remote config set workspace.roots /home/ilove/Documents/repos
+cx-remote hub
 ```
 
-Caddy keeps the `/apps/cx-tg` prefix when proxying:
+Caddy keeps the `/apps/cx-remote` prefix when proxying:
 
 ```caddyfile
 gateway.1662803.xyz {
-  @cx_tg path /apps/cx-tg /apps/cx-tg/*
-  handle @cx_tg {
+  @cx_remote path /apps/cx-remote /apps/cx-remote/*
+  handle @cx_remote {
     reverse_proxy 127.0.0.1:3030
   }
 
@@ -223,11 +230,11 @@ gateway.1662803.xyz {
 }
 ```
 
-Use the existing gateway public routes before the final `handle` when this snippet is merged into the live Caddyfile. The `/apps/cx-tg` route uses cx-tg token auth; the rest of gateway can keep its existing Caddy Basic Auth policy.
+Use the existing gateway public routes before the final `handle` when this snippet is merged into the live Caddyfile. The `/apps/cx-remote` route uses cx-remote token auth; the rest of gateway can keep its existing Caddy Basic Auth policy.
 
 ## Telegram
 
-Enable Telegram in `~/.cx-tg/settings.json`:
+Enable Telegram in `~/.cx-remote/settings.json`:
 
 ```json
 {
@@ -267,30 +274,30 @@ Pending approvals expire automatically when the related Codex turn cannot contin
 Main file:
 
 ```text
-~/.cx-tg/settings.json
+~/.cx-remote/settings.json
 ```
 
 Useful commands:
 
 ```bash
-cx-tg config path
-cx-tg config show
-cx-tg config show --resolved
-cx-tg config get codex.model
-cx-tg config set codex.model gpt-5.5
-cx-tg doctor
+cx-remote config path
+cx-remote config show
+cx-remote config show --resolved
+cx-remote config get codex.model
+cx-remote config set codex.model gpt-5.5
+cx-remote doctor
 ```
 
 Environment variables can override selected fields:
 
 ```text
-CX_TG_HOME
-CX_TG_SETTINGS
-CX_TG_HOST
-CX_TG_PORT
-CX_TG_PUBLIC_URL
-CX_TG_ACCESS_TOKEN
-CX_TG_DB_PATH
+CX_REMOTE_HOME
+CX_REMOTE_SETTINGS
+CX_REMOTE_HOST
+CX_REMOTE_PORT
+CX_REMOTE_PUBLIC_URL
+CX_REMOTE_ACCESS_TOKEN
+CX_REMOTE_DB_PATH
 CODEX_BIN
 CODEX_MODEL
 CODEX_REASONING_EFFORT
@@ -318,7 +325,7 @@ pnpm typecheck
 pnpm build
 pnpm check
 node dist/main.js --help
-CX_TG_HOME=/tmp/cx-tg-demo node dist/main.js hub
+CX_REMOTE_HOME=/tmp/cx-remote-demo node dist/main.js hub
 curl -H "Authorization: Bearer <token>" http://127.0.0.1:3030/api/health
 ```
 

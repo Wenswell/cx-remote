@@ -85,7 +85,7 @@ const updateSettingSchema = z.object({
   value: z.unknown(),
 });
 
-const WEB_AUTH_COOKIE = 'cx_tg_auth';
+const WEB_AUTH_COOKIE = 'cx_remote_auth';
 
 function sessionConfigSchema() {
   return z.object({
@@ -185,7 +185,7 @@ export class HubServer {
       c.header('Set-Cookie', authCookie(this.config.server.accessToken, isSecureCookie(this.config.server.publicUrl), basePath));
       return c.json({ ok: true });
     });
-    app.get(route('/api/health'), (c) => c.json({ ok: true, name: 'cx-tg' }));
+    app.get(route('/api/health'), (c) => c.json({ ok: true, name: 'cx-remote' }));
     app.get(route('/api/status'), async (c) => {
       const localOnly = isLocalScope(c.req.query('scope'));
       const nodes = await this.cluster.listNodes(localOnly);
@@ -493,7 +493,7 @@ function renderWebIndex(webDistDir: string, basePath: string): string {
     .replaceAll('src="/assets/', `src="${assetPrefix}/assets/`);
   const bootstrap = [
     `<base href="${escapeHtmlAttribute(basePath ? `${basePath}/` : '/')}">`,
-    `<script>window.__CX_TG_BASE_PATH__=${JSON.stringify(basePath)};</script>`,
+    `<script>window.__CX_REMOTE_BASE_PATH__=${JSON.stringify(basePath)};</script>`,
   ].join('\n  ');
   return normalizedHtml.includes('</head>')
     ? normalizedHtml.replace('</head>', `  ${bootstrap}\n</head>`)

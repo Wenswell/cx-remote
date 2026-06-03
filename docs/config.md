@@ -1,32 +1,32 @@
 # Configuration
 
-`cx-tg` uses one JSON settings file:
+`cx-remote` uses one JSON settings file:
 
 ```text
-~/.cx-tg/settings.json
+~/.cx-remote/settings.json
 ```
 
-Set `CX_TG_HOME` to move the whole state directory, or `CX_TG_SETTINGS` to point at a specific settings file.
+Set `CX_REMOTE_HOME` to move the whole state directory, or `CX_REMOTE_SETTINGS` to point at a specific settings file.
 
 ## Setup
 
 ```bash
-cx-tg setup
+cx-remote setup
 ```
 
 `setup` prompts for the high-frequency fields, validates the result, and writes the settings file. Existing secret values are shown as masked values.
-It requires an interactive terminal. Use `cx-tg config set` for scripts and automation.
+It requires an interactive terminal. Use `cx-remote config set` for scripts and automation.
 
 ## Config CLI
 
 ```bash
-cx-tg config path
-cx-tg config show
-cx-tg config show --resolved
-cx-tg config list
-cx-tg config get <key>
-cx-tg config set <key> <value>
-cx-tg config validate
+cx-remote config path
+cx-remote config show
+cx-remote config show --resolved
+cx-remote config list
+cx-remote config get <key>
+cx-remote config set <key> <value>
+cx-remote config validate
 ```
 
 `show` reads the settings file. `show --resolved` shows the runtime config after environment overrides and path resolution. Secret values are masked by default; use `--reveal-secrets` only in a trusted terminal.
@@ -34,15 +34,15 @@ cx-tg config validate
 List values accept comma-separated input or a JSON array. JSON-valued fields accept a JSON object or array:
 
 ```bash
-cx-tg config set workspace.roots /home/ilove/Documents/repos,/tmp/work
-cx-tg config set telegram.allowedUsers '["123456789","987654321"]'
-cx-tg config set cluster.peers '[{"id":"laptop","name":"My Laptop","url":"http://10.0.0.12:3030","accessToken":"..."}]'
+cx-remote config set workspace.roots /home/ilove/Documents/repos,/tmp/work
+cx-remote config set telegram.allowedUsers '["123456789","987654321"]'
+cx-remote config set cluster.peers '[{"id":"laptop","name":"My Laptop","url":"http://10.0.0.12:3030","accessToken":"..."}]'
 ```
 
 ## Doctor
 
 ```bash
-cx-tg doctor
+cx-remote doctor
 ```
 
 Doctor checks these sections:
@@ -63,19 +63,19 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 When the URL has a path, Hub uses that path as its mount path for Web, static assets, REST APIs, and SSE. For example:
 
 ```bash
-cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
 ```
 
-The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and APIs at `/apps/cx-tg/api/*`. Reverse proxies must preserve that prefix.
+The Web page is served at `/apps/cx-remote/`, assets at `/apps/cx-remote/assets/*`, and APIs at `/apps/cx-remote/api/*`. Reverse proxies must preserve that prefix.
 
 ## Editable Fields
 
 | Key | Type | Env | Restart |
 |---|---:|---|---|
-| `server.host` | string | `CX_TG_HOST` | yes |
-| `server.port` | number | `CX_TG_PORT` | yes |
-| `server.publicUrl` | absolute URL or empty | `CX_TG_PUBLIC_URL` | no |
-| `server.accessToken` | string | `CX_TG_ACCESS_TOKEN` | yes |
+| `server.host` | string | `CX_REMOTE_HOST` | yes |
+| `server.port` | number | `CX_REMOTE_PORT` | yes |
+| `server.publicUrl` | absolute URL or empty | `CX_REMOTE_PUBLIC_URL` | no |
+| `server.accessToken` | string | `CX_REMOTE_ACCESS_TOKEN` | yes |
 | `cluster.name` | string |  | yes |
 | `cluster.peers` | json |  | yes |
 | `workspace.roots` | string[] |  | yes |
@@ -92,7 +92,7 @@ The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and 
 | `approvals.autoApproveCommands` | string[] | `AUTO_APPROVE_COMMANDS` | no |
 | `approvals.autoApproveReadonly` | boolean | `AUTO_APPROVE_READONLY` | no |
 | `approvals.timeoutMs` | number |  | no |
-| `storage.dbPath` | string | `CX_TG_DB_PATH` | yes |
+| `storage.dbPath` | string | `CX_REMOTE_DB_PATH` | yes |
 | `log.level` | enum | `LOG_LEVEL` | no |
 | `log.file` | string | `LOG_FILE` | yes |
 | `log.console` | boolean | `LOG_CONSOLE` | yes |
@@ -107,7 +107,7 @@ The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and 
   "server": {
     "host": "0.0.0.0",
     "port": 3030,
-    "publicUrl": "https://gateway.1662803.xyz/apps/cx-tg",
+    "publicUrl": "https://gateway.1662803.xyz/apps/cx-remote",
     "accessToken": "generated-token"
   },
   "cluster": {
@@ -157,30 +157,32 @@ The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and 
     "timeoutMs": 300000
   },
   "storage": {
-    "dbPath": "~/.cx-tg/cx-tg.db"
+    "dbPath": "~/.cx-remote/cx-remote.db"
   },
   "log": {
     "level": "info",
-    "file": "logs/cx-tg.log",
+    "file": "logs/cx-remote.log",
     "console": true,
     "prompts": false
   }
 }
 ```
 
-Each peer entry points at another `cx-tg hub` instance. The central Hub keeps browsing, switching, and notifications in one Web UI, while the remote node keeps its own Codex runtime, queue, approvals, and persistence.
+Each peer entry points at another `cx-remote hub` instance. The central Hub keeps browsing, switching, and notifications in one Web UI, while the remote node keeps its own Codex runtime, queue, approvals, and persistence.
 
-Peer URLs are Hub roots. They can be bare LAN origins such as `http://10.126.126.3:3030` or path-based Hub roots such as `https://gateway.1662803.xyz/apps/cx-tg-peer`.
+Peer URLs are Hub roots. They can be bare LAN origins such as `http://10.126.126.3:3030` or path-based Hub roots such as `https://gateway.1662803.xyz/apps/cx-remote-peer`.
 
-For the `gateway.1662803.xyz/apps/cx-tg` deployment, the gateway node uses:
+For the `gateway.1662803.xyz/apps/cx-remote` deployment, the gateway node uses:
 
 ```bash
-cx-tg config set cluster.name gateway
-cx-tg config set server.host 127.0.0.1
-cx-tg config set server.port 3030
-cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
-cx-tg config set workspace.roots '[]'
-cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+pnpm add -g github:Wenswell/cx-remote
+cx-remote config set cluster.name gateway
+cx-remote config set server.host 127.0.0.1
+cx-remote config set server.port 3030
+cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
+cx-remote config set server.accessToken '<central-token>'
+cx-remote config set workspace.roots '[]'
+cx-remote config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
 ```
 
 `workspace.roots=[]` makes the gateway Hub a pure aggregator. It proxies peer workspaces, sessions, approvals, and events while keeping the gateway server out of Web workspace selection.
@@ -188,10 +190,12 @@ cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.1
 Each peer node keeps `cluster.peers` empty, sets its own workspace roots, and listens on the EasyTier LAN:
 
 ```bash
-cx-tg config set server.host 0.0.0.0
-cx-tg config set server.port 3030
-cx-tg config set cluster.peers '[]'
-cx-tg config set workspace.roots /path/to/repos
+pnpm add -g github:Wenswell/cx-remote
+cx-remote config set server.host 0.0.0.0
+cx-remote config set server.port 3030
+cx-remote config set server.accessToken '<peer-token>'
+cx-remote config set cluster.peers '[]'
+cx-remote config set workspace.roots /path/to/repos
 ```
 
 ## Web Settings API
@@ -223,11 +227,11 @@ The response includes `restartRequired` for fields that require a Hub restart.
 Use per-session flags for one session:
 
 ```bash
-cx-tg new --cwd <path> --search
-cx-tg new --cwd <path> --node laptop --search
-cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --node laptop --permission-mode safe-yolo
-cx-tg session-config <session-id> --search --permission-mode yolo
+cx-remote new --cwd <path> --search
+cx-remote new --cwd <path> --node laptop --search
+cx-remote new --cwd <path> --model gpt-5.5 --reasoning-effort high
+cx-remote adopt --thread <codex-thread-id> --cwd <path> --node laptop --permission-mode safe-yolo
+cx-remote session-config <session-id> --search --permission-mode yolo
 ```
 
 Search is enabled by default; `--no-search` disables it for one session. Model choices are `auto`, `gpt-5.5`, and `gpt-5.4`. Reasoning effort choices are `default`, `xhigh`, `high`, and `medium`. Web labels `auto` and `default` as `Default(<resolved value>)` using Codex's inherited runtime defaults.

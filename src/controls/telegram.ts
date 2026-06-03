@@ -10,7 +10,7 @@ import { logger } from '../logger.js';
 import { formatControlClaimed, formatControlReleased, formatStopSent } from './control-actions.js';
 
 const commands = [
-  { command: 'start', description: 'Show CX TG help' },
+  { command: 'start', description: 'Show CX Remote help' },
   { command: 'status', description: 'Show bridge status' },
   { command: 'new', description: 'Create Hub session: /new <path>' },
   { command: 'sessions', description: 'List Hub sessions' },
@@ -286,7 +286,7 @@ function telegramOwner(key: string, userId: string): { id: string; label: string
 
 function helpText(webUrl: string): string {
   return [
-    'CX TG commands',
+    'CX Remote commands',
     '/new <path> - create and bind a Hub session',
     '/sessions - list Hub-managed sessions',
     '/use <session-id> - bind this chat/topic',
@@ -328,7 +328,7 @@ function formatApprovals(approvals: Approval[]): string {
 
 function formatStatus(stats: ReturnType<ControlHub['stats']>, sessionId: string | undefined): string {
   return [
-    'CX TG status',
+    'CX Remote status',
     `Hub-managed sessions: ${stats.sessions}`,
     `Messages: ${stats.messages}`,
     `Pending approvals: ${stats.pendingApprovals}`,

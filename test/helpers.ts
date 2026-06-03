@@ -216,7 +216,7 @@ export function jsonHeaders(config: AppConfig): Record<string, string> {
 }
 
 export function tempDbPath(): string {
-  return join(mkdtempSync(join(tmpdir(), 'cx-tg-test-')), 'cx-tg.db');
+  return join(mkdtempSync(join(tmpdir(), 'cx-remote-test-')), 'cx-remote.db');
 }
 
 export function cleanupDb(dbPath: string): void {
@@ -224,18 +224,18 @@ export function cleanupDb(dbPath: string): void {
 }
 
 function tempWebDistDir(): string {
-  const webDistDir = mkdtempSync(join(tmpdir(), 'cx-tg-web-'));
+  const webDistDir = mkdtempSync(join(tmpdir(), 'cx-remote-web-'));
   mkdirSync(join(webDistDir, 'assets'), { recursive: true });
   writeFileSync(join(webDistDir, 'index.html'), [
     '<!doctype html>',
     '<html lang="en">',
     '<head>',
     '  <meta charset="utf-8">',
-    '  <title>CX TG</title>',
+    '  <title>CX Remote</title>',
     '  <link rel="stylesheet" href="/assets/main.css">',
     '  <script type="module" src="/assets/main.js"></script>',
     '</head>',
-    '<body><div id="app">CX TG</div></body>',
+    '<body><div id="app">CX Remote</div></body>',
     '</html>',
     '',
   ].join('\n'));

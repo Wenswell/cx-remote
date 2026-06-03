@@ -67,7 +67,7 @@ export const settingsSchema = z.object({
   }),
   log: z.object({
     level: logLevelSchema.default('info'),
-    file: z.string().default('logs/cx-tg.log'),
+    file: z.string().default('logs/cx-remote.log'),
     console: z.boolean().default(true),
     prompts: z.boolean().default(false),
   }),
@@ -104,10 +104,10 @@ export interface LoadConfigResult {
   source: ConfigSource;
 }
 
-const DEFAULT_HOME = join(homedir(), '.cx-tg');
+const DEFAULT_HOME = join(homedir(), '.cx-remote');
 
 export function defaultConfigHome(): string {
-  return expandHome(process.env.CX_TG_HOME || DEFAULT_HOME);
+  return expandHome(process.env.CX_REMOTE_HOME || DEFAULT_HOME);
 }
 
 export function defaultSettingsPath(home = defaultConfigHome()): string {
@@ -115,12 +115,12 @@ export function defaultSettingsPath(home = defaultConfigHome()): string {
 }
 
 export function getSettingsPath(): string {
-  return expandHome(process.env.CX_TG_SETTINGS || defaultSettingsPath());
+  return expandHome(process.env.CX_REMOTE_SETTINGS || defaultSettingsPath());
 }
 
 export function loadConfig(): LoadConfigResult {
   const home = defaultConfigHome();
-  const settingsPath = expandHome(process.env.CX_TG_SETTINGS || defaultSettingsPath(home));
+  const settingsPath = expandHome(process.env.CX_REMOTE_SETTINGS || defaultSettingsPath(home));
   mkdirSync(dirname(settingsPath), { recursive: true });
 
   let raw: unknown;
@@ -304,11 +304,11 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
       timeoutMs: 5 * 60 * 1000,
     },
     storage: {
-      dbPath: join(home, 'cx-tg.db'),
+      dbPath: join(home, 'cx-remote.db'),
     },
     log: {
       level: 'info',
-      file: 'logs/cx-tg.log',
+      file: 'logs/cx-remote.log',
       console: true,
       prompts: false,
     },
@@ -345,11 +345,11 @@ export function isPathInside(root: string, candidate: string): boolean {
 function applyEnv(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const next = structuredClone(raw) as Record<string, unknown>;
-  setEnvPath(next, ['server', 'host'], process.env.CX_TG_HOST);
-  setEnvPath(next, ['server', 'port'], process.env.CX_TG_PORT);
-  setEnvPath(next, ['server', 'publicUrl'], process.env.CX_TG_PUBLIC_URL);
-  setEnvPath(next, ['server', 'accessToken'], process.env.CX_TG_ACCESS_TOKEN);
-  setEnvPath(next, ['storage', 'dbPath'], process.env.CX_TG_DB_PATH);
+  setEnvPath(next, ['server', 'host'], process.env.CX_REMOTE_HOST);
+  setEnvPath(next, ['server', 'port'], process.env.CX_REMOTE_PORT);
+  setEnvPath(next, ['server', 'publicUrl'], process.env.CX_REMOTE_PUBLIC_URL);
+  setEnvPath(next, ['server', 'accessToken'], process.env.CX_REMOTE_ACCESS_TOKEN);
+  setEnvPath(next, ['storage', 'dbPath'], process.env.CX_REMOTE_DB_PATH);
   setEnvPath(next, ['agents', 'codex', 'bin'], process.env.CODEX_BIN);
   setEnvPath(next, ['agents', 'codex', 'model'], process.env.CODEX_MODEL);
   setEnvPath(next, ['agents', 'codex', 'reasoningEffort'], process.env.CODEX_REASONING_EFFORT);

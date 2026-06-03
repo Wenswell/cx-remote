@@ -1,5 +1,5 @@
 {
-  "name": "cx-tg",
+  "name": "cx-remote",
   "version": "0.1.0",
   "type": "module",
   "files": [
@@ -7,9 +7,12 @@
     "docs",
     "README.md"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wenswell/cx-remote.git"
+  },
   "bin": {
-    "cx-tg": "./dist/main.js",
-    "cc-hub": "./dist/main.js"
+    "cx-remote": "./dist/main.js"
   },
   "scripts": {
     "dev": "pnpm dev:hub",
@@ -22,7 +25,7 @@
     "test": "node --import tsx --test test/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "check": "pnpm typecheck && pnpm test && pnpm build",
-    "prepack": "pnpm build"
+    "prepare": "pnpm build"
   },
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",

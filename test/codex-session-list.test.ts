@@ -6,7 +6,7 @@ import test from 'node:test';
 import { listCodexResumeSessions, readCodexSessionPreview, readCodexTranscript } from '../src/agents/codex/sessions.js';
 
 test('Codex resume sessions are filtered by cwd and sorted by updated time', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const cwd = process.cwd();
   const otherCwd = tmpdir();
 
@@ -33,7 +33,7 @@ test('Codex resume sessions are filtered by cwd and sorted by updated time', () 
 });
 
 test('Codex resume session list caps the requested limit', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const cwd = process.cwd();
 
   try {
@@ -49,7 +49,7 @@ test('Codex resume session list caps the requested limit', () => {
 });
 
 test('Codex resume session list uses transcript user message when the index has no title', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const cwd = process.cwd();
 
   try {
@@ -64,7 +64,7 @@ test('Codex resume session list uses transcript user message when the index has 
 });
 
 test('Codex transcript import reads canonical response item messages only', () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const cwd = process.cwd();
 
   try {

@@ -32,7 +32,7 @@ export function runConfigCommand(argv: string[]): void {
 
   if (subcommand === 'get') {
     const key = argv[1];
-    if (!key) throw new Error('Usage: cx-tg config get <key>');
+    if (!key) throw new Error('Usage: cx-remote config get <key>');
     const field = findSettingField(key);
     const value = getSettingValue(readSettings(), key);
     printValue(field, value, revealSecrets);
@@ -42,7 +42,7 @@ export function runConfigCommand(argv: string[]): void {
   if (subcommand === 'set') {
     const key = argv[1];
     const value = argv[2];
-    if (!key || value === undefined) throw new Error('Usage: cx-tg config set <key> <value>');
+    if (!key || value === undefined) throw new Error('Usage: cx-remote config set <key> <value>');
     const field = findSettingField(key);
     const settings = setSettingValue(key, value);
     console.log(`updated ${key} = ${formatValue(getSettingValue(settings, key), field, false)}`);

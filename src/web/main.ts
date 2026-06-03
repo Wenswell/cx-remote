@@ -15,7 +15,7 @@ import './styles.css';
 
 declare global {
   interface Window {
-    __CX_TG_BASE_PATH__?: string;
+    __CX_REMOTE_BASE_PATH__?: string;
   }
 }
 
@@ -202,7 +202,7 @@ type AlertElement = HTMLElement & {
 const tokenFromUrl = new URLSearchParams(location.search).get('token') || '';
 if (tokenFromUrl) clearTokenFromUrl();
 
-const notifyPrefsKey = 'cx_tg_notify_sessions';
+const notifyPrefsKey = 'cx_remote_notify_sessions';
 const refreshIconSvg = [
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">',
   '<path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2z"/>',
@@ -211,15 +211,15 @@ const refreshIconSvg = [
 ].join('');
 const refreshIconUrl = `data:image/svg+xml,${encodeURIComponent(refreshIconSvg)}`;
 
-let clientId = localStorage.getItem('cx_tg_client_id');
+let clientId = localStorage.getItem('cx_remote_client_id');
 if (!clientId) {
   clientId = crypto.randomUUID();
-  localStorage.setItem('cx_tg_client_id', clientId);
+  localStorage.setItem('cx_remote_client_id', clientId);
 }
 
 const controlLabel = `Web ${clientId.slice(0, 8)}`;
 const jsonHeaders = { 'Content-Type': 'application/json' };
-const appBasePath = normalizeBasePath(window.__CX_TG_BASE_PATH__ || '');
+const appBasePath = normalizeBasePath(window.__CX_REMOTE_BASE_PATH__ || '');
 const apiPath = {
   auth: appPath('/api/auth'),
   status: appPath('/api/status'),
@@ -242,8 +242,8 @@ const apiPath = {
   },
 };
 
-let activeSessionId = localStorage.getItem('cx_tg_session') || '';
-let currentWorkspaceId = localStorage.getItem('cx_tg_workspace') || '';
+let activeSessionId = localStorage.getItem('cx_remote_session') || '';
+let currentWorkspaceId = localStorage.getItem('cx_remote_workspace') || '';
 let sessions: Session[] = [];
 let pathSessions: Session[] = [];
 let adoptSessions: CodexResumeSession[] = [];
@@ -373,7 +373,7 @@ async function loadWorkspaces(): Promise<void> {
   workspaces = await api<Workspace[]>(apiPath.workspaces);
   if (!workspaces.length) return;
   if (!workspaces.some((workspace) => workspace.id === currentWorkspaceId)) currentWorkspaceId = workspaces[0]!.id;
-  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
+  localStorage.setItem('cx_remote_workspace', currentWorkspaceId);
   renderWorkspaceRoots();
   await loadDirs(currentPath);
 }
@@ -400,7 +400,7 @@ async function loadDirs(path: string): Promise<void> {
   if (!workspace) return;
   const data = await api<DirectoryListing>(apiPath.files(workspace.id, path));
   currentWorkspaceId = data.workspaceId;
-  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
+  localStorage.setItem('cx_remote_workspace', currentWorkspaceId);
   currentPath = data.relativePath || '';
   element<ValueElement>('cwd').value = data.current;
   renderDirs(data);
@@ -607,7 +607,7 @@ function sectionLabel(text: string): HTMLElement {
 
 async function selectHubSession(session: Session): Promise<void> {
   activeSessionId = session.id;
-  localStorage.setItem('cx_tg_session', activeSessionId);
+  localStorage.setItem('cx_remote_session', activeSessionId);
   await syncWorkspaceToSession(session);
   renderRecentSessions();
   renderPathSessions();
@@ -676,7 +676,7 @@ async function adoptPendingCodexSession(): Promise<void> {
     }),
   });
   activeSessionId = session.id;
-  localStorage.setItem('cx_tg_session', activeSessionId);
+  localStorage.setItem('cx_remote_session', activeSessionId);
   await element<DialogElement>('adopt-dialog').hide();
   clearAdoptPreview();
   await loadAll();
@@ -754,7 +754,7 @@ async function syncWorkspaceToSession(session: Session): Promise<void> {
   if (!workspace) return;
   if (currentWorkspaceId !== workspace.id) {
     currentWorkspaceId = workspace.id;
-    localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
+    localStorage.setItem('cx_remote_workspace', currentWorkspaceId);
   }
   const relativePath = session.cwd === workspace.path ? '' : session.cwd.slice(workspace.path.length + 1);
   await loadDirs(relativePath);
@@ -965,7 +965,7 @@ function connectEvents(sessionId: string): void {
     }
     if (data.type === 'session.deleted') {
       activeSessionId = '';
-      localStorage.removeItem('cx_tg_session');
+      localStorage.removeItem('cx_remote_session');
       closeEvents();
       run(loadAll());
       return;
@@ -1098,7 +1098,7 @@ function notifyAssistantMessage(message: Message): void {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   new Notification(sessionTitle(message.sessionId), {
     body: truncateText(message.content.trim(), 180),
-    tag: `cx-tg-${message.sessionId}`,
+    tag: `cx-remote-${message.sessionId}`,
   });
 }
 
@@ -1113,7 +1113,7 @@ async function refreshNotificationCursor(): Promise<void> {
 
 function sessionTitle(sessionId: string): string {
   const session = sessions.find((item) => item.id === sessionId) || currentSession;
-  return session ? `${session.nodeName} · ${session.title}` : 'CX TG';
+  return session ? `${session.nodeName} · ${session.title}` : 'CX Remote';
 }
 
 function setButtonLabel(button: HTMLElement, label: string): void {
@@ -1221,7 +1221,7 @@ function closeSidebarOnMobile(): void {
 element<ValueElement>('workspace-root').addEventListener('sl-change', (event) => {
   currentWorkspaceId = (event.currentTarget as ValueElement).value;
   currentPath = '';
-  localStorage.setItem('cx_tg_workspace', currentWorkspaceId);
+  localStorage.setItem('cx_remote_workspace', currentWorkspaceId);
   run(loadDirs(''));
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
@@ -1282,7 +1282,7 @@ element('delete-confirm').addEventListener('click', (event) => runAction(event.c
   await element<DialogElement>('delete-dialog').hide();
   activeSessionId = '';
   pendingDeleteSessionId = '';
-  localStorage.removeItem('cx_tg_session');
+  localStorage.removeItem('cx_remote_session');
   await loadAll();
 }));
 element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
@@ -1298,7 +1298,7 @@ element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
       body: JSON.stringify({ nodeId: workspace.nodeId, cwd, title, config: runtimeConfigFromControls('new') }),
     });
     activeSessionId = session.id;
-    localStorage.setItem('cx_tg_session', activeSessionId);
+    localStorage.setItem('cx_remote_session', activeSessionId);
     formElement.reset();
     await loadAll();
     closeSidebarOnMobile();

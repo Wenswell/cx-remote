@@ -105,7 +105,7 @@ test('web auth cookie allows EventSource without query token', async () => {
     });
     const cookie = login.headers.get('set-cookie') || '';
     assert.equal(login.status, 200);
-    assert.match(cookie, /cx_tg_auth=/);
+    assert.match(cookie, /cx_remote_auth=/);
     assert.match(cookie, /HttpOnly/);
 
     const response = await context.app.request(
@@ -320,7 +320,7 @@ test('session detail and create APIs proxy remote nodes', async () => {
   const remote = createTestApp({
     configure: (config) => {
       config.cluster.name = 'Remote node';
-      config.server.publicUrl = 'https://remote.example/apps/cx-tg';
+      config.server.publicUrl = 'https://remote.example/apps/cx-remote';
       config.server.accessToken = 'remote-access-token';
     },
   });
@@ -330,7 +330,7 @@ test('session detail and create APIs proxy remote nodes', async () => {
       config.cluster.peers = [{
         id: 'remote1',
         name: 'Remote node',
-        url: 'http://remote.test/apps/cx-tg',
+        url: 'http://remote.test/apps/cx-remote',
         accessToken: 'remote-access-token',
       }];
     },
@@ -364,7 +364,7 @@ test('session detail and create APIs proxy remote nodes', async () => {
 });
 
 test('Codex sessions API lists resume sessions for a workspace directory', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const context = createTestApp({ codexHome });
 
   try {
@@ -395,7 +395,7 @@ test('Codex sessions API lists resume sessions for a workspace directory', async
 });
 
 test('Codex session preview API returns transcript sample', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const context = createTestApp({ codexHome });
 
   try {
@@ -432,7 +432,7 @@ test('Codex session preview API returns transcript sample', async () => {
 });
 
 test('session adopt API imports Codex transcript when requested', async () => {
-  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
   const context = createTestApp({ codexHome });
 
   try {
@@ -712,7 +712,7 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     const cookie = login.headers.get('set-cookie') || '';
     assert.equal(login.status, 302);
     assert.equal(login.headers.get('location'), '/');
-    assert.match(cookie, /cx_tg_auth=/);
+    assert.match(cookie, /cx_remote_auth=/);
     assert.match(cookie, /Path=\//);
 
     const page = await context.app.request('/', { headers: { Accept: 'text/html', Cookie: cookie } });
@@ -759,7 +759,7 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
 test('web, API, and event routes mount below publicUrl path', async () => {
   const context = createTestApp({
     configure: (config) => {
-      config.server.publicUrl = 'https://gateway.1662803.xyz/apps/cx-tg';
+      config.server.publicUrl = 'https://gateway.1662803.xyz/apps/cx-remote';
     },
   });
   const abort = new AbortController();
@@ -767,32 +767,32 @@ test('web, API, and event routes mount below publicUrl path', async () => {
   try {
     const session = createSession(context.store);
 
-    const blockedPage = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html' } });
+    const blockedPage = await context.app.request('/apps/cx-remote/', { headers: { Accept: 'text/html' } });
     assert.equal(blockedPage.status, 401);
 
-    const blockedPlainPage = await context.app.request('/apps/cx-tg/');
+    const blockedPlainPage = await context.app.request('/apps/cx-remote/');
     assert.equal(blockedPlainPage.status, 401);
 
-    const redirect = await context.app.request(`/apps/cx-tg?token=${encodeURIComponent(context.config.server.accessToken)}`);
+    const redirect = await context.app.request(`/apps/cx-remote?token=${encodeURIComponent(context.config.server.accessToken)}`);
     assert.equal(redirect.status, 302);
-    assert.equal(redirect.headers.get('location'), `/apps/cx-tg/?token=${encodeURIComponent(context.config.server.accessToken)}`);
+    assert.equal(redirect.headers.get('location'), `/apps/cx-remote/?token=${encodeURIComponent(context.config.server.accessToken)}`);
 
-    const login = await context.app.request(`/apps/cx-tg/?token=${encodeURIComponent(context.config.server.accessToken)}`, { headers: { Accept: 'text/html' } });
+    const login = await context.app.request(`/apps/cx-remote/?token=${encodeURIComponent(context.config.server.accessToken)}`, { headers: { Accept: 'text/html' } });
     const cookie = login.headers.get('set-cookie') || '';
     assert.equal(login.status, 302);
-    assert.equal(login.headers.get('location'), '/apps/cx-tg/');
-    assert.match(cookie, /Path=\/apps\/cx-tg/);
+    assert.equal(login.headers.get('location'), '/apps/cx-remote/');
+    assert.match(cookie, /Path=\/apps\/cx-remote/);
     assert.match(cookie, /Secure/);
 
-    const page = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html', Cookie: cookie } });
+    const page = await context.app.request('/apps/cx-remote/', { headers: { Accept: 'text/html', Cookie: cookie } });
     const html = await page.text();
     assert.equal(page.status, 200);
-    assert.match(html, /<base href="\/apps\/cx-tg\/">/);
-    assert.match(html, /window\.__CX_TG_BASE_PATH__="\/apps\/cx-tg"/);
-    assert.match(html, /\/apps\/cx-tg\/assets\/main\.css/);
-    assert.match(html, /\/apps\/cx-tg\/assets\/main\.js/);
+    assert.match(html, /<base href="\/apps\/cx-remote\/">/);
+    assert.match(html, /window\.__CX_REMOTE_BASE_PATH__="\/apps\/cx-remote"/);
+    assert.match(html, /\/apps\/cx-remote\/assets\/main\.css/);
+    assert.match(html, /\/apps\/cx-remote\/assets\/main\.js/);
 
-    const css = await context.app.request('/apps/cx-tg/assets/main.css', { headers: { Cookie: cookie } });
+    const css = await context.app.request('/apps/cx-remote/assets/main.css', { headers: { Cookie: cookie } });
     assert.equal(css.status, 200);
     assert.match(await css.text(), /\.shell/);
 
@@ -800,13 +800,13 @@ test('web, API, and event routes mount below publicUrl path', async () => {
     assert.equal(rootApi.status, 404);
 
     const status = await json<{ server: { basePath: string } }>(await context.app.request(
-      '/apps/cx-tg/api/status',
+      '/apps/cx-remote/api/status',
       { headers: { Cookie: cookie } },
     ));
-    assert.equal(status.server.basePath, '/apps/cx-tg');
+    assert.equal(status.server.basePath, '/apps/cx-remote');
 
     const events = await context.app.request(
-      `/apps/cx-tg/api/events?sessionId=${encodeURIComponent(session.id)}`,
+      `/apps/cx-remote/api/events?sessionId=${encodeURIComponent(session.id)}`,
       { headers: { Cookie: cookie }, signal: abort.signal },
     );
     const text = await readInitialSse(events, abort);

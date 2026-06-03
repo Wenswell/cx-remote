@@ -1,6 +1,6 @@
 # Architecture
 
-`cx-tg` is a local-first Control Hub for Codex. One Hub can aggregate other Hub nodes over the LAN.
+`cx-remote` is a local-first Control Hub for Codex. One Hub can aggregate other Hub nodes over the LAN.
 
 ```text
 Web / Telegram / CLI
@@ -96,18 +96,18 @@ The Hub serves API/SSE routes and the built Web app. Vite writes the browser bun
 By default Hono serves `/`, `/assets/*`, and `/api/*`. When `server.publicUrl` contains a path, that path becomes the application mount path. With:
 
 ```text
-server.publicUrl = https://gateway.1662803.xyz/apps/cx-tg
+server.publicUrl = https://gateway.1662803.xyz/apps/cx-remote
 ```
 
 the Hub serves:
 
 ```text
-/apps/cx-tg/             Web
-/apps/cx-tg/assets/*     built assets
-/apps/cx-tg/api/*        REST and SSE
+/apps/cx-remote/             Web
+/apps/cx-remote/assets/*     built assets
+/apps/cx-remote/api/*        REST and SSE
 ```
 
-The reverse proxy preserves the prefix. Hono redirects `/apps/cx-tg` to `/apps/cx-tg/`, accepts the bootstrap `?token=<access-token>` URL, sets the Web auth cookie, and redirects to the clean URL before serving the browser console. Web HTML and assets require the token cookie. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
+The reverse proxy preserves the prefix. Hono redirects `/apps/cx-remote` to `/apps/cx-remote/`, accepts the bootstrap `?token=<access-token>` URL, sets the Web auth cookie, and redirects to the clean URL before serving the browser console. Web HTML and assets require the token cookie. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
 
 The Hub API uses bearer auth and JSON errors:
 
@@ -150,9 +150,9 @@ PATCH  /api/settings
 GET    /api/events
 ```
 
-These endpoint paths are relative to the mount path. Under `/apps/cx-tg`, `GET /api/status` becomes `GET /apps/cx-tg/api/status`.
+These endpoint paths are relative to the mount path. Under `/apps/cx-remote`, `GET /api/status` becomes `GET /apps/cx-remote/api/status`.
 
-API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web bootstrap accepts `?token=<access-token>` on HTML and asset routes, then stores the cookie and removes the token from the URL. `/api/events` does not accept token query parameters.
+API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_remote_auth` HttpOnly cookie. Web bootstrap accepts `?token=<access-token>` on HTML and asset routes, then stores the cookie and removes the token from the URL. `/api/events` does not accept token query parameters.
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/status` also returns `nodes[]`, the current node plus any configured peers. `stats` is aggregated across reachable nodes.
@@ -176,13 +176,13 @@ Web notification preferences are browser-local. The per-session notify switch st
 The gateway deployment keeps Codex runtime state on each node and uses the gateway Hub as an aggregator:
 
 ```text
-https://gateway.1662803.xyz/apps/cx-tg
+https://gateway.1662803.xyz/apps/cx-remote
   -> Caddy on 10.126.126.1
   -> gateway Hub on 127.0.0.1:3030
   -> peer Hubs on 10.126.126.2:3030 and 10.126.126.3:3030
 ```
 
-Caddy matches `/apps/cx-tg` and `/apps/cx-tg/*`, then proxies to the gateway Hub while preserving the path prefix. The cx-tg route uses Hub token auth. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-tg` and `cluster.peers` entries for the peer LAN URLs.
+Caddy matches `/apps/cx-remote` and `/apps/cx-remote/*`, then proxies to the gateway Hub while preserving the path prefix. The cx-remote route uses Hub token auth. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-remote` and `cluster.peers` entries for the peer LAN URLs.
 
 The gateway Hub sets `workspace.roots=[]` because it is a pure aggregator. Web workspace selection comes from peer Hubs only; the gateway server is not a Codex work node.
 
@@ -202,7 +202,7 @@ Web, Telegram, and CLI share observation by default. Any attached control can se
 
 Queued jobs survive Hub restart. On startup, leftover `running` jobs are marked `failed` because the owned `codex app-server` process stopped with the Hub; remaining `queued` jobs continue in FIFO order.
 
-`Claim` creates a temporary exclusive lease. While the lease is active, only the matching owner can send. CLI `attach` is shared by default; `cx-tg attach <session-id> --claim` claims a short lease and refreshes it while the process is alive, then releases it on exit.
+`Claim` creates a temporary exclusive lease. While the lease is active, only the matching owner can send. CLI `attach` is shared by default; `cx-remote attach <session-id> --claim` claims a short lease and refreshes it while the process is alive, then releases it on exit.
 
 ## Session Adoption
 
@@ -229,7 +229,7 @@ POST /api/sessions/adopt { nodeId, threadId, cwd, importTranscript: true }
 CLI/API adoption accepts an explicit Codex thread id, and Web/CLI can point that adoption at a remote node:
 
 ```text
-cx-tg adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] --import
+cx-remote adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] --import
 POST /api/sessions/adopt { nodeId?, threadId, cwd, importTranscript? }
 ```
 

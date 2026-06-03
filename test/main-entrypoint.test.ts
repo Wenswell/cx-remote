@@ -7,9 +7,9 @@ import test from 'node:test';
 import { isEntrypoint } from '../src/main.js';
 
 test('isEntrypoint resolves symlink argv paths', () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-entry-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-entry-'));
   const target = join(process.cwd(), 'src', 'main.ts');
-  const link = join(tempDir, 'cx-tg');
+  const link = join(tempDir, 'cx-remote');
 
   try {
     symlinkSync(target, link);

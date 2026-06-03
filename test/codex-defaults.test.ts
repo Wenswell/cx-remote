@@ -7,7 +7,7 @@ import { resolveCodexRuntimeDefaults } from '../src/agents/codex/defaults.js';
 
 test('resolveCodexRuntimeDefaults reads top-level Codex config', () => {
   const previousHome = process.env.CODEX_HOME;
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
 
   try {
     process.env.CODEX_HOME = tempDir;
@@ -36,7 +36,7 @@ test('resolveCodexRuntimeDefaults reads top-level Codex config', () => {
 
 test('resolveCodexRuntimeDefaults uses bundled defaults without Codex config', () => {
   const previousHome = process.env.CODEX_HOME;
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
 
   try {
     process.env.CODEX_HOME = tempDir;

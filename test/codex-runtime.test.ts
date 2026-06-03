@@ -30,7 +30,7 @@ test('Codex permission modes resolve to app-server policies', () => {
 });
 
 test('CodexRuntime resumes a persisted thread before starting a turn', async () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-runtime-'));
   const fake = createFakeCodexBin(tempDir);
   const runtime = new CodexRuntime({
     bin: fake.bin,
@@ -58,7 +58,7 @@ test('CodexRuntime resumes a persisted thread before starting a turn', async () 
 });
 
 test('CodexRuntime starts a new thread when no thread id is stored', async () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-runtime-'));
   const fake = createFakeCodexBin(tempDir);
   const runtime = new CodexRuntime({
     bin: fake.bin,
@@ -86,7 +86,7 @@ test('CodexRuntime starts a new thread when no thread id is stored', async () =>
 });
 
 test('CodexRuntime forwards search and yolo permissions', async () => {
-  const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
+  const tempDir = mkdtempSync(join(tmpdir(), 'cx-remote-runtime-'));
   const fake = createFakeCodexBin(tempDir);
   const runtime = new CodexRuntime({
     bin: fake.bin,

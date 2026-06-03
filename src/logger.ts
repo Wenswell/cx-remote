@@ -19,7 +19,7 @@ const levelWeight: Record<LogLevel, number> = {
 
 let options: LoggerOptions = {
   level: 'info',
-  file: 'logs/cx-tg.log',
+  file: 'logs/cx-remote.log',
   console: true,
   prompts: false,
 };

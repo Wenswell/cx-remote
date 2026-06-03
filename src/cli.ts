@@ -69,14 +69,14 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     }
     case 'session': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg session <session-id> [--json]');
+      if (!sessionId) throw new Error('Usage: cx-remote session <session-id> [--json]');
       const detail = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}`);
       printMaybeJson(detail, hasFlag(argv, '--json'), formatSessionDetail);
       return;
     }
     case 'messages': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg messages <session-id> [--limit <n>] [--json]');
+      if (!sessionId) throw new Error('Usage: cx-remote messages <session-id> [--limit <n>] [--json]');
       const limit = valueAfter(argv, '--limit');
       const messages = await client.get(`/api/sessions/${encodeURIComponent(sessionId)}/messages${queryString({ limit })}`);
       printMaybeJson(messages, hasFlag(argv, '--json'), formatMessages);
@@ -84,7 +84,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     }
     case 'new': {
       const cwd = valueAfter(argv, '--cwd') ?? argv[1];
-      if (!cwd) throw new Error('Usage: cx-tg new --cwd <path> [--node <node-id>] [--title <title>] [runtime flags]');
+      if (!cwd) throw new Error('Usage: cx-remote new --cwd <path> [--node <node-id>] [--title <title>] [runtime flags]');
       const title = valueAfter(argv, '--title');
       const nodeId = valueAfter(argv, '--node');
       console.log(JSON.stringify(await client.post('/api/sessions', { nodeId, cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
@@ -93,7 +93,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case 'adopt': {
       const threadId = valueAfter(argv, '--thread') ?? positionalValue(argv);
       const cwd = valueAfter(argv, '--cwd');
-      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] [--title <title>] [--import] [runtime flags]');
+      if (!threadId || !cwd) throw new Error('Usage: cx-remote adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] [--title <title>] [--import] [runtime flags]');
       const title = valueAfter(argv, '--title');
       const nodeId = valueAfter(argv, '--node');
       console.log(JSON.stringify(await client.post('/api/sessions/adopt', {
@@ -109,39 +109,39 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case 'send': {
       const sessionId = argv[1];
       const text = argv.slice(2).join(' ');
-      if (!sessionId || !text) throw new Error('Usage: cx-tg send <session-id> <text>');
+      if (!sessionId || !text) throw new Error('Usage: cx-remote send <session-id> <text>');
       console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/messages`, { text, controlType: 'cli' }), null, 2));
       return;
     }
     case 'attach': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg attach <session-id> [--claim]');
+      if (!sessionId) throw new Error('Usage: cx-remote attach <session-id> [--claim]');
       await attachSession(client, sessionId, hasFlag(argv, '--claim'));
       return;
     }
     case 'stop': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg stop <session-id>');
+      if (!sessionId) throw new Error('Usage: cx-remote stop <session-id>');
       console.log(JSON.stringify(await client.post(`/api/sessions/${encodeURIComponent(sessionId)}/interrupt`, {}), null, 2));
       return;
     }
     case 'rename': {
       const sessionId = argv[1];
       const title = argv.slice(2).join(' ').trim();
-      if (!sessionId || !title) throw new Error('Usage: cx-tg rename <session-id> <title>');
+      if (!sessionId || !title) throw new Error('Usage: cx-remote rename <session-id> <title>');
       console.log(JSON.stringify(await client.patch(`/api/sessions/${encodeURIComponent(sessionId)}`, { title }), null, 2));
       return;
     }
     case 'session-config': {
       const sessionId = argv[1];
       const config = sessionConfigFromArgs(argv);
-      if (!sessionId || !config) throw new Error('Usage: cx-tg session-config <session-id> [runtime flags]');
+      if (!sessionId || !config) throw new Error('Usage: cx-remote session-config <session-id> [runtime flags]');
       console.log(JSON.stringify(await client.patch(`/api/sessions/${encodeURIComponent(sessionId)}/config`, { config }), null, 2));
       return;
     }
     case 'delete': {
       const sessionId = argv[1];
-      if (!sessionId) throw new Error('Usage: cx-tg delete <session-id>');
+      if (!sessionId) throw new Error('Usage: cx-remote delete <session-id>');
       console.log(JSON.stringify(await client.delete(`/api/sessions/${encodeURIComponent(sessionId)}`), null, 2));
       return;
     }
@@ -156,7 +156,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case 'approve': {
       const approvalId = argv[1];
       const decision = argv[2] ?? 'approved';
-      if (!approvalId) throw new Error('Usage: cx-tg approve <approval-id> [approved|denied|approved_for_session]');
+      if (!approvalId) throw new Error('Usage: cx-remote approve <approval-id> [approved|denied|approved_for_session]');
       console.log(JSON.stringify(await client.post(`/api/approvals/${encodeURIComponent(approvalId)}/resolve`, { decision, controlType: 'cli' }), null, 2));
       return;
     }
@@ -335,7 +335,7 @@ async function attachSession(client: ApiClient, sessionId: string, claimExclusiv
 
   let streamed = false;
   let closed = false;
-  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: 'cx-tg> ' });
+  const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: 'cx-remote> ' });
   const prompt = () => {
     if (!closed) rl.prompt();
   };
@@ -517,38 +517,38 @@ function formatApprovals(value: unknown): string {
 
 function printHelp(): void {
   console.log([
-    'cx-tg commands',
+    'cx-remote commands',
     '',
-    '  cx-tg hub                         Start Hub + Web + Telegram',
-    '  cx-tg setup                       Configure settings',
-    '  cx-tg config path                 Print settings path',
-    '  cx-tg config show [--resolved]    Print settings',
-    '  cx-tg config list                 List settings',
-    '  cx-tg config get <key>            Print one setting',
-    '  cx-tg config set <key> <value>     Update settings',
-    '  cx-tg config validate             Validate settings',
-    '  cx-tg status                      Show Hub status',
-    '  cx-tg sessions [--json]           List Hub-managed sessions',
-    '  cx-tg session <session-id>        Show Hub session detail',
-    '  cx-tg messages <session-id>       Show Hub session messages',
-    '  cx-tg new --cwd <path> [--node <id>] Create Hub-managed session',
+    '  cx-remote hub                         Start Hub + Web + Telegram',
+    '  cx-remote setup                       Configure settings',
+    '  cx-remote config path                 Print settings path',
+    '  cx-remote config show [--resolved]    Print settings',
+    '  cx-remote config list                 List settings',
+    '  cx-remote config get <key>            Print one setting',
+    '  cx-remote config set <key> <value>     Update settings',
+    '  cx-remote config validate             Validate settings',
+    '  cx-remote status                      Show Hub status',
+    '  cx-remote sessions [--json]           List Hub-managed sessions',
+    '  cx-remote session <session-id>        Show Hub session detail',
+    '  cx-remote messages <session-id>       Show Hub session messages',
+    '  cx-remote new --cwd <path> [--node <id>] Create Hub-managed session',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
-    '  cx-tg adopt --thread <id> --cwd <path> [--node <id>] Adopt Codex thread',
+    '  cx-remote adopt --thread <id> --cwd <path> [--node <id>] Adopt Codex thread',
     '    [--import]',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
-    '  cx-tg send <session-id> <text>    Send message',
-    '  cx-tg attach <session-id>         Attach shared CLI to a session',
-    '  cx-tg attach <session-id> --claim Attach with exclusive control',
-    '  cx-tg stop <session-id>           Stop session',
-    '  cx-tg rename <session-id> <title> Rename session',
-    '  cx-tg session-config <session-id> Update idle session runtime config',
-    '  cx-tg delete <session-id>         Delete Hub session',
-    '  cx-tg approvals [--all]           List approvals',
-    '  cx-tg approve <approval-id>       Resolve approval',
-    '  cx-tg doctor                      Check local Hub',
+    '  cx-remote send <session-id> <text>    Send message',
+    '  cx-remote attach <session-id>         Attach shared CLI to a session',
+    '  cx-remote attach <session-id> --claim Attach with exclusive control',
+    '  cx-remote stop <session-id>           Stop session',
+    '  cx-remote rename <session-id> <title> Rename session',
+    '  cx-remote session-config <session-id> Update idle session runtime config',
+    '  cx-remote delete <session-id>         Delete Hub session',
+    '  cx-remote approvals [--all]           List approvals',
+    '  cx-remote approve <approval-id>       Resolve approval',
+    '  cx-remote doctor                      Check local Hub',
     '',
-    'Settings: ~/.cx-tg/settings.json',
+    'Settings: ~/.cx-remote/settings.json',
   ].join('\n'));
 }

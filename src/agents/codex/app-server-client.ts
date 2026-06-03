@@ -90,8 +90,8 @@ export class CodexAppServerClient {
   async initialize(): Promise<void> {
     await this.request('initialize', {
       clientInfo: {
-        name: 'cx-tg',
-        title: 'CX TG',
+        name: 'cx-remote',
+        title: 'CX Remote',
         version: '0.1.0',
       },
       capabilities: { experimentalApi: true, requestAttestation: false },

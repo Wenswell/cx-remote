@@ -42,8 +42,8 @@ export async function startApp(): Promise<void> {
   await telegram.start();
 
   const publicUrl = serverPublicUrl(config);
-  logger.info('cx-tg started', { url: publicUrl });
-  console.log(`CX TG Hub: ${publicUrl}`);
+  logger.info('cx-remote started', { url: publicUrl });
+  console.log(`CX Remote Hub: ${publicUrl}`);
   console.log(`Web login: ${serverTokenUrl(config)}`);
   console.log(`Web token: ${config.server.accessToken}`);
   console.log(`Settings: ${config.settingsPath}`);
