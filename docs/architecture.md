@@ -129,7 +129,7 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
-`POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `approvalPolicy`, `sandbox`, `search`, and `bypassApprovalsAndSandbox`.
+`POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
 `POST /api/sessions/adopt` accepts `threadId`, `cwd`, and optional `title`, then creates a Hub-managed session mapped to that native Codex thread. `codexThreadId` is unique in the Hub store.
 `PATCH /api/sessions/:id/config` updates an idle Hub session runtime config and restarts its idle app-server runtime on the next prompt. Running or queued sessions reject config updates.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
@@ -173,28 +173,29 @@ Deleting a Hub session removes Hub messages, queue, approvals, control state, an
 
 Hub sessions store a Codex runtime config snapshot. `codex.*` settings provide defaults for new sessions; session creation, adoption, and idle-session config updates can override those defaults.
 
-Native Codex flag equivalents:
+Session runtime fields:
 
 ```text
-codex --search
+--search
   -> config.search = true
 
-codex --search --dangerously-bypass-approvals-and-sandbox
-  -> config.search = true
-  -> config.bypassApprovalsAndSandbox = true
-  -> config.approvalPolicy = never
-  -> config.sandbox = danger-full-access
+--permission-mode yolo
+  -> config.permissionMode = yolo
+
+--dangerously-bypass-approvals-and-sandbox
+  -> config.permissionMode = yolo
 ```
 
-`CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends `approvalPolicy` and a v2 `permissions` profile through `thread/start`, `thread/resume`, and `turn/start`.
+`CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends mode-derived `approvalPolicy` and v2 `permissions` through `thread/start`, `thread/resume`, and `turn/start`.
 
-Sandbox-to-permissions mapping:
+Permission mode mapping:
 
-| Session sandbox | App-server permissions |
-|---|---|
-| `read-only` | `:read-only` |
-| `workspace-write` | `:workspace` |
-| `danger-full-access` | `:danger-full-access` |
+| Permission mode | Approval policy | App-server permissions |
+|---|---|---|
+| `default` | `on-request` | `:workspace` |
+| `read-only` | `never` | `:read-only` |
+| `safe-yolo` | `on-failure` | `:workspace` |
+| `yolo` | `never` | `:danger-full-access` |
 
 ## First Version Boundaries
 

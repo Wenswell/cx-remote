@@ -28,10 +28,8 @@ export async function runSetup(): Promise<void> {
     const codexBin = await ask(rl, 'Codex bin', current.agents.codex.bin || 'codex');
     const codexModel = await ask(rl, 'Codex model', current.agents.codex.model);
     const reasoningEffort = await ask(rl, 'Codex reasoning effort', current.agents.codex.reasoningEffort);
-    const approvalPolicy = await ask(rl, 'Approval policy', current.agents.codex.approvalPolicy);
-    const sandbox = await ask(rl, 'Sandbox', current.agents.codex.sandbox);
+    const permissionMode = await ask(rl, 'Permission mode', current.agents.codex.permissionMode);
     const search = await yesNo(rl, 'Enable Codex search', current.agents.codex.search);
-    const bypassApprovalsAndSandbox = await yesNo(rl, 'Bypass Codex approvals and sandbox', current.agents.codex.bypassApprovalsAndSandbox);
     const autoApproveReadonly = await yesNo(rl, 'Auto approve read-only commands', current.approvals.autoApproveReadonly);
     const autoApproveCommands = splitList(await ask(rl, 'Auto approve commands', current.approvals.autoApproveCommands.join(',')));
     const timeoutMs = Number(await ask(rl, 'Approval timeout ms', String(current.approvals.timeoutMs)));
@@ -57,10 +55,8 @@ export async function runSetup(): Promise<void> {
           bin: codexBin,
           model: codexModel,
           reasoningEffort,
-          approvalPolicy: approvalPolicy as Settings['agents']['codex']['approvalPolicy'],
-          sandbox: sandbox as Settings['agents']['codex']['sandbox'],
+          permissionMode: permissionMode as Settings['agents']['codex']['permissionMode'],
           search,
-          bypassApprovalsAndSandbox,
         },
       },
       controls: {

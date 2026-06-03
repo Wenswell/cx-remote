@@ -270,17 +270,14 @@ function sessionConfigFromArgs(argv: string[]): CodexSessionConfigPatch | undefi
   const config: CodexSessionConfigPatch = {};
   const model = valueAfter(argv, '--model');
   const reasoningEffort = valueAfter(argv, '--reasoning-effort');
-  const sandbox = valueAfter(argv, '--sandbox');
-  const approvalPolicy = valueAfter(argv, '--approval-policy') ?? valueAfter(argv, '--ask-for-approval');
+  const permissionMode = valueAfter(argv, '--permission-mode');
 
   if (model !== undefined) config.model = model;
   if (reasoningEffort !== undefined) config.reasoningEffort = reasoningEffort;
-  if (sandbox !== undefined) config.sandbox = sandbox as CodexSessionConfigPatch['sandbox'];
-  if (approvalPolicy !== undefined) config.approvalPolicy = approvalPolicy as CodexSessionConfigPatch['approvalPolicy'];
+  if (permissionMode !== undefined) config.permissionMode = permissionMode as CodexSessionConfigPatch['permissionMode'];
   if (hasFlag(argv, '--search')) config.search = true;
   if (hasFlag(argv, '--no-search')) config.search = false;
-  if (hasFlag(argv, '--dangerously-bypass-approvals-and-sandbox')) config.bypassApprovalsAndSandbox = true;
-  if (hasFlag(argv, '--no-bypass')) config.bypassApprovalsAndSandbox = false;
+  if (hasFlag(argv, '--dangerously-bypass-approvals-and-sandbox')) config.permissionMode = 'yolo';
 
   return Object.keys(config).length ? config : undefined;
 }
@@ -447,10 +444,8 @@ function formatSessionDetail(value: unknown): string {
       config?: {
         model?: string;
         reasoningEffort?: string;
-        approvalPolicy?: string;
-        sandbox?: string;
+        permissionMode?: string;
         search?: boolean;
-        bypassApprovalsAndSandbox?: boolean;
       };
       codexThreadId: string | null;
       currentTurnId: string | null;
@@ -475,15 +470,13 @@ function formatSessionDetail(value: unknown): string {
   ].join('\n');
 }
 
-function formatSessionConfig(config: { model?: string; reasoningEffort?: string; approvalPolicy?: string; sandbox?: string; search?: boolean; bypassApprovalsAndSandbox?: boolean } | undefined): string {
+function formatSessionConfig(config: { model?: string; reasoningEffort?: string; permissionMode?: string; search?: boolean } | undefined): string {
   if (!config) return '-';
   return [
     `model=${config.model || '-'}`,
     `effort=${config.reasoningEffort || '-'}`,
-    `approval=${config.approvalPolicy || '-'}`,
-    `sandbox=${config.sandbox || '-'}`,
+    `permission=${config.permissionMode || '-'}`,
     `search=${config.search ? 'on' : 'off'}`,
-    `bypass=${config.bypassApprovalsAndSandbox ? 'on' : 'off'}`,
   ].join(' ');
 }
 
@@ -524,9 +517,9 @@ function printHelp(): void {
     '  cx-tg session <session-id>        Show Hub session detail',
     '  cx-tg messages <session-id>       Show Hub session messages',
     '  cx-tg new --cwd <path>            Create Hub-managed session',
-    '    [--search] [--dangerously-bypass-approvals-and-sandbox] [--sandbox <mode>] [--approval-policy <policy>]',
+    '    [--search] [--permission-mode <mode>] [--dangerously-bypass-approvals-and-sandbox]',
     '  cx-tg adopt --thread <id> --cwd <path> Adopt Codex thread',
-    '    [--search] [--dangerously-bypass-approvals-and-sandbox] [--sandbox <mode>] [--approval-policy <policy>]',
+    '    [--search] [--permission-mode <mode>] [--dangerously-bypass-approvals-and-sandbox]',
     '  cx-tg send <session-id> <text>    Send message',
     '  cx-tg attach <session-id>         Attach shared CLI to a session',
     '  cx-tg attach <session-id> --claim Attach with exclusive control',

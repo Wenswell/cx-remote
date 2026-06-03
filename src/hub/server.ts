@@ -14,8 +14,7 @@ import { ControlHub } from '../runtime/control-hub.js';
 import { encodeSseFrame } from '../runtime/sse.js';
 import { logger } from '../logger.js';
 
-const approvalPolicySchema = z.enum(['untrusted', 'on-failure', 'on-request', 'never']);
-const sandboxSchema = z.enum(['read-only', 'workspace-write', 'danger-full-access']);
+const permissionModeSchema = z.enum(['default', 'read-only', 'safe-yolo', 'yolo']);
 
 const createSessionSchema = z.object({
   cwd: z.string().min(1),
@@ -73,10 +72,8 @@ function sessionConfigSchema() {
   return z.object({
     model: z.string().optional(),
     reasoningEffort: z.string().optional(),
-    approvalPolicy: approvalPolicySchema.optional(),
-    sandbox: sandboxSchema.optional(),
+    permissionMode: permissionModeSchema.optional(),
     search: z.boolean().optional(),
-    bypassApprovalsAndSandbox: z.boolean().optional(),
   });
 }
 

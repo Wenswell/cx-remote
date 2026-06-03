@@ -18,10 +18,8 @@ type JsonObject = Record<string, unknown>;
 type SessionConfig = {
   model?: string;
   reasoningEffort?: string;
-  sandbox?: string;
-  approvalPolicy?: string;
+  permissionMode?: string;
   search?: boolean;
-  bypassApprovalsAndSandbox?: boolean;
 };
 
 type Session = {
@@ -419,10 +417,8 @@ function renderSessionHeader(): void {
     ['status', currentSession.status],
     ['control', currentSession.controlLabel || 'shared'],
     ['model', config.model || '-'],
+    ['permission', config.permissionMode || '-'],
     ['search', config.search ? 'on' : 'off'],
-    ['sandbox', config.sandbox || '-'],
-    ['approval', config.approvalPolicy || '-'],
-    ['bypass', config.bypassApprovalsAndSandbox ? 'on' : 'off'],
   ].forEach(([label, value]) => chips.appendChild(metaChip(label, value)));
   detail.appendChild(chips);
 
@@ -854,40 +850,23 @@ function submitButton(form: HTMLFormElement): HTMLElement {
 
 function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: SessionConfig): void {
   element<ToggleElement>(`${prefix}-search`).checked = config.search === true;
-  element<ToggleElement>(`${prefix}-bypass`).checked = config.bypassApprovalsAndSandbox === true;
-  element<ConfigValueElement>(`${prefix}-sandbox`).value = config.sandbox || 'workspace-write';
-  element<ConfigValueElement>(`${prefix}-approval-policy`).value = config.approvalPolicy || 'on-request';
+  element<ConfigValueElement>(`${prefix}-permission-mode`).value = config.permissionMode || 'default';
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
   const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
   if (model) model.value = config.model || '';
   if (reasoningEffort) reasoningEffort.value = config.reasoningEffort || '';
-  syncRuntimeBypass(prefix);
 }
 
 function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): SessionConfig {
   const config: SessionConfig = {
     search: element<ToggleElement>(`${prefix}-search`).checked,
-    bypassApprovalsAndSandbox: element<ToggleElement>(`${prefix}-bypass`).checked,
-    sandbox: element<ConfigValueElement>(`${prefix}-sandbox`).value,
-    approvalPolicy: element<ConfigValueElement>(`${prefix}-approval-policy`).value,
+    permissionMode: element<ConfigValueElement>(`${prefix}-permission-mode`).value,
   };
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
   const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
   if (model) config.model = model.value.trim();
   if (reasoningEffort) config.reasoningEffort = reasoningEffort.value.trim();
   return config;
-}
-
-function syncRuntimeBypass(prefix: 'new' | 'adopt' | 'runtime'): void {
-  const bypass = element<ToggleElement>(`${prefix}-bypass`).checked;
-  const sandbox = element<ConfigValueElement>(`${prefix}-sandbox`);
-  const approvalPolicy = element<ConfigValueElement>(`${prefix}-approval-policy`);
-  if (bypass) {
-    sandbox.value = 'danger-full-access';
-    approvalPolicy.value = 'never';
-  }
-  sandbox.disabled = bypass;
-  approvalPolicy.disabled = bypass;
 }
 
 function openRuntimeDialog(session: Session): void {
@@ -913,9 +892,6 @@ element<ValueElement>('workspace-root').addEventListener('sl-change', (event) =>
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
 element('refresh').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, loadAll));
-element<ToggleElement>('new-bypass').addEventListener('sl-change', () => syncRuntimeBypass('new'));
-element<ToggleElement>('adopt-bypass').addEventListener('sl-change', () => syncRuntimeBypass('adopt'));
-element<ToggleElement>('runtime-bypass').addEventListener('sl-change', () => syncRuntimeBypass('runtime'));
 element('claim').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, '/control'), {

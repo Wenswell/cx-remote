@@ -67,10 +67,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 | `codex.bin` | string | `CODEX_BIN` | yes |
 | `codex.model` | string | `CODEX_MODEL` | no |
 | `codex.reasoningEffort` | string | `CODEX_REASONING_EFFORT` | no |
-| `codex.approvalPolicy` | enum | `CODEX_APPROVAL_POLICY` | no |
-| `codex.sandbox` | enum | `CODEX_SANDBOX` | no |
+| `codex.permissionMode` | enum | `CODEX_PERMISSION_MODE` | no |
 | `codex.search` | boolean | `CODEX_SEARCH` | no |
-| `codex.bypassApprovalsAndSandbox` | boolean | `CODEX_BYPASS_APPROVALS_AND_SANDBOX` | no |
 | `telegram.enabled` | boolean | `TG_ENABLED` | yes |
 | `telegram.botToken` | string | `TG_BOT_TOKEN` | yes |
 | `telegram.allowedUsers` | string[] | `TG_ALLOWED_USERS` | yes |
@@ -106,10 +104,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
       "bin": "codex",
       "model": "",
       "reasoningEffort": "",
-      "approvalPolicy": "on-request",
-      "sandbox": "workspace-write",
-      "search": false,
-      "bypassApprovalsAndSandbox": false
+      "permissionMode": "default",
+      "search": false
     }
   },
   "controls": {
@@ -168,8 +164,8 @@ Use per-session flags for one session:
 
 ```bash
 cx-tg new --cwd <path> --search
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --search --dangerously-bypass-approvals-and-sandbox
-cx-tg session-config <session-id> --sandbox danger-full-access --approval-policy never
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
+cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 
-When `bypassApprovalsAndSandbox` is true, validation stores `approvalPolicy=never` and `sandbox=danger-full-access`. Runtime requests use app-server v2 permissions, so `danger-full-access` is sent as `permissions=:danger-full-access`.
+Permission modes are `default`, `read-only`, `safe-yolo`, and `yolo`. The dangerous Codex flag is accepted as a `yolo` shortcut.

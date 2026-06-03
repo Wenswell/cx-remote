@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { Approval, ApprovalPolicy, CodexEvent, CodexSessionConfig, CodexSessionConfigPatch, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, SandboxMode, Session, SessionDetail } from '../domain/types.js';
+import type { Approval, CodexEvent, CodexSessionConfig, CodexSessionConfigPatch, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session, SessionDetail } from '../domain/types.js';
 import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
@@ -125,10 +125,8 @@ export class ControlHub {
     return normalizeSessionConfig({
       model: emptyToUndefined(this.config.agents.codex.model),
       reasoningEffort: emptyToUndefined(this.config.agents.codex.reasoningEffort),
-      approvalPolicy: this.config.agents.codex.approvalPolicy,
-      sandbox: this.config.agents.codex.sandbox,
+      permissionMode: this.config.agents.codex.permissionMode,
       search: this.config.agents.codex.search,
-      bypassApprovalsAndSandbox: this.config.agents.codex.bypassApprovalsAndSandbox,
     });
   }
 
@@ -630,12 +628,7 @@ function normalizeConfigPatch(patch: CodexSessionConfigPatch | undefined): Codex
 }
 
 function normalizeSessionConfig(config: CodexSessionConfig): CodexSessionConfig {
-  if (!config.bypassApprovalsAndSandbox) return config;
-  return {
-    ...config,
-    approvalPolicy: 'never' satisfies ApprovalPolicy,
-    sandbox: 'danger-full-access' satisfies SandboxMode,
-  };
+  return config;
 }
 
 function isExpiredControl(session: Session): boolean {

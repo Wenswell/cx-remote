@@ -3,11 +3,10 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import type { ApprovalPolicy, SandboxMode } from '../domain/types.js';
+import type { CodexPermissionMode } from '../domain/types.js';
 import { SETTING_FIELDS, findSettingField, type SettingField } from './fields.js';
 
-const approvalPolicySchema = z.enum(['untrusted', 'on-failure', 'on-request', 'never']);
-const sandboxSchema = z.enum(['read-only', 'workspace-write', 'danger-full-access']);
+const permissionModeSchema = z.enum(['default', 'read-only', 'safe-yolo', 'yolo']);
 const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
 
 export const settingsSchema = z.object({
@@ -26,10 +25,8 @@ export const settingsSchema = z.object({
       bin: z.string().min(1).default('codex'),
       model: z.string().default(''),
       reasoningEffort: z.string().default(''),
-      approvalPolicy: approvalPolicySchema.default('on-request'),
-      sandbox: sandboxSchema.default('workspace-write'),
+      permissionMode: permissionModeSchema.default('default'),
       search: z.boolean().default(false),
-      bypassApprovalsAndSandbox: z.boolean().default(false),
     }),
   }),
   controls: z.object({
@@ -185,7 +182,7 @@ export function patchSettings(patch: ConfigPatch): Settings {
 }
 
 export function validateSettings(input: unknown): Settings {
-  const settings = normalizeCodexSettings(settingsSchema.parse(input) as Settings);
+  const settings = settingsSchema.parse(input) as Settings;
   validateTelegram(settings);
   return settings;
 }
@@ -245,10 +242,8 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
         bin: 'codex',
         model: '',
         reasoningEffort: '',
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
+        permissionMode: 'default',
         search: false,
-        bypassApprovalsAndSandbox: false,
       },
     },
     controls: {
@@ -316,10 +311,8 @@ function applyEnv(raw: unknown): unknown {
   setEnvPath(next, ['agents', 'codex', 'bin'], process.env.CODEX_BIN);
   setEnvPath(next, ['agents', 'codex', 'model'], process.env.CODEX_MODEL);
   setEnvPath(next, ['agents', 'codex', 'reasoningEffort'], process.env.CODEX_REASONING_EFFORT);
-  setEnvPath(next, ['agents', 'codex', 'approvalPolicy'], process.env.CODEX_APPROVAL_POLICY as ApprovalPolicy | undefined);
-  setEnvPath(next, ['agents', 'codex', 'sandbox'], process.env.CODEX_SANDBOX as SandboxMode | undefined);
+  setEnvPath(next, ['agents', 'codex', 'permissionMode'], process.env.CODEX_PERMISSION_MODE as CodexPermissionMode | undefined);
   setEnvPath(next, ['agents', 'codex', 'search'], boolEnv(process.env.CODEX_SEARCH));
-  setEnvPath(next, ['agents', 'codex', 'bypassApprovalsAndSandbox'], boolEnv(process.env.CODEX_BYPASS_APPROVALS_AND_SANDBOX));
   setEnvPath(next, ['controls', 'telegram', 'enabled'], boolEnv(process.env.TG_ENABLED));
   setEnvPath(next, ['controls', 'telegram', 'botToken'], process.env.TG_BOT_TOKEN);
   setEnvPath(next, ['controls', 'telegram', 'allowedUsers'], listEnv(process.env.TG_ALLOWED_USERS));
@@ -415,19 +408,4 @@ function validateTelegram(config: Settings): void {
   if (config.controls.telegram.enabled && !config.controls.telegram.botToken) {
     throw new Error('controls.telegram.botToken is required when Telegram is enabled');
   }
-}
-
-function normalizeCodexSettings(settings: Settings): Settings {
-  if (!settings.agents.codex.bypassApprovalsAndSandbox) return settings;
-  return {
-    ...settings,
-    agents: {
-      ...settings.agents,
-      codex: {
-        ...settings.agents.codex,
-        approvalPolicy: 'never',
-        sandbox: 'danger-full-access',
-      },
-    },
-  };
 }

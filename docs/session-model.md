@@ -40,5 +40,5 @@ Adopt Codex thread
 - Adoption registers an existing Codex thread under Hub control. Hub history starts at adoption; previous native Codex transcript remains in Codex storage.
 - Runtime startup resumes an adopted or previously persisted Codex thread before starting the next turn.
 - Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-tg session-config`.
-- `--dangerously-bypass-approvals-and-sandbox` maps to `bypassApprovalsAndSandbox=true`, `approvalPolicy=never`, and `sandbox=danger-full-access`; runtime RPC sends `permissions=:danger-full-access`.
+- `permissionMode` accepts `default`, `read-only`, `safe-yolo`, and `yolo`; `--dangerously-bypass-approvals-and-sandbox` maps to `permissionMode=yolo`.
 - Deleting a Hub session removes Hub messages, queue, approvals, and events. It leaves the native Codex thread in Codex storage.

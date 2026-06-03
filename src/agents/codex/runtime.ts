@@ -1,8 +1,9 @@
-import type { ApprovalResult, ChoiceResult, CodexEvent, SandboxMode, Session } from '../../domain/types.js';
+import type { ApprovalResult, ChoiceResult, CodexEvent, Session } from '../../domain/types.js';
 import { asRecord, asString } from '../../utils.js';
 import { logger } from '../../logger.js';
 import { CodexAppServerClient } from './app-server-client.js';
 import { CodexEventConverter } from './event-converter.js';
+import { resolveCodexPermissionModeConfig } from './permission-mode.js';
 
 export interface CodexRuntimeOptions {
   bin: string;
@@ -125,12 +126,13 @@ export class CodexRuntime {
 
       const turnDone = createTurnDone();
       this.turnDone = turnDone;
+      const runtimeConfig = resolveCodexPermissionModeConfig(this.options.session.config.permissionMode);
       const response = await this.client.startTurn({
         threadId: this.threadId,
         cwd: this.options.session.cwd,
         input: [{ type: 'text', text: prompt }],
-        approvalPolicy: this.options.session.config.approvalPolicy,
-        permissions: permissionProfile(this.options.session.config.sandbox),
+        approvalPolicy: runtimeConfig.approvalPolicy,
+        permissions: runtimeConfig.permissions,
         model: emptyToUndefined(this.options.session.config.model),
         effort: emptyToUndefined(this.options.session.config.reasoningEffort),
       }, signal);
@@ -174,10 +176,11 @@ export class CodexRuntime {
   }
 
   private threadParams(): Record<string, unknown> {
+    const runtimeConfig = resolveCodexPermissionModeConfig(this.options.session.config.permissionMode);
     return {
       cwd: this.options.session.cwd,
-      approvalPolicy: this.options.session.config.approvalPolicy,
-      permissions: permissionProfile(this.options.session.config.sandbox),
+      approvalPolicy: runtimeConfig.approvalPolicy,
+      permissions: runtimeConfig.permissions,
       model: emptyToUndefined(this.options.session.config.model),
       config: {
         ...(this.options.session.config.reasoningEffort ? { model_reasoning_effort: this.options.session.config.reasoningEffort } : {}),
@@ -217,17 +220,6 @@ function extractTurnId(response: unknown): string | null {
   const record = asRecord(response) ?? {};
   const turn = asRecord(record.turn);
   return asString(turn?.id ?? turn?.turnId ?? turn?.turn_id ?? record.turnId ?? record.turn_id) ?? null;
-}
-
-function permissionProfile(sandbox: SandboxMode): string {
-  switch (sandbox) {
-    case 'read-only':
-      return ':read-only';
-    case 'danger-full-access':
-      return ':danger-full-access';
-    case 'workspace-write':
-      return ':workspace';
-  }
 }
 
 function emptyToUndefined(value: string | undefined): string | undefined {

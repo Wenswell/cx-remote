@@ -80,10 +80,8 @@ export function createSession(
     controlLeaseExpiresAt: null,
     controlUpdatedAt: null,
     config: {
-      approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
+      permissionMode: 'default',
       search: false,
-      bypassApprovalsAndSandbox: false,
     },
     createdAt: now,
     updatedAt: now,
@@ -111,10 +109,8 @@ export function createConfig(dbPath: string): AppConfig {
         bin: 'codex',
         model: '',
         reasoningEffort: '',
-        approvalPolicy: 'on-request',
-        sandbox: 'workspace-write',
+        permissionMode: 'default',
         search: false,
-        bypassApprovalsAndSandbox: false,
       },
     },
     controls: {

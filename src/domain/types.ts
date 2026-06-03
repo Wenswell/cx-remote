@@ -8,6 +8,8 @@ export type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never'
 
 export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
+export type CodexPermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
+
 export type ApprovalType = 'tool' | 'choice';
 
 export type ApprovalStatus = 'pending' | 'resolved' | 'expired';
@@ -17,10 +19,8 @@ export type PromptJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancel
 export interface CodexSessionConfig {
   model?: string;
   reasoningEffort?: string;
-  approvalPolicy: ApprovalPolicy;
-  sandbox: SandboxMode;
+  permissionMode: CodexPermissionMode;
   search: boolean;
-  bypassApprovalsAndSandbox: boolean;
 }
 
 export type CodexSessionConfigPatch = Partial<CodexSessionConfig>;

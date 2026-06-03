@@ -38,17 +38,11 @@
             <sl-details class="runtime-details" summary="Runtime">
               <div class="runtime-controls">
                 <sl-switch id="new-search" size="small">Search</sl-switch>
-                <sl-switch id="new-bypass" size="small">Bypass approvals and sandbox</sl-switch>
-                <sl-select id="new-sandbox" label="Sandbox" size="small">
-                  <sl-option value="read-only">read-only</sl-option>
-                  <sl-option value="workspace-write">workspace-write</sl-option>
-                  <sl-option value="danger-full-access">danger-full-access</sl-option>
-                </sl-select>
-                <sl-select id="new-approval-policy" label="Approval" size="small">
-                  <sl-option value="untrusted">untrusted</sl-option>
-                  <sl-option value="on-failure">on-failure</sl-option>
-                  <sl-option value="on-request">on-request</sl-option>
-                  <sl-option value="never">never</sl-option>
+                <sl-select id="new-permission-mode" label="Permission mode" size="small">
+                  <sl-option value="default">Default</sl-option>
+                  <sl-option value="read-only">Read Only</sl-option>
+                  <sl-option value="safe-yolo">Safe Yolo</sl-option>
+                  <sl-option value="yolo">Yolo</sl-option>
                 </sl-select>
               </div>
             </sl-details>
@@ -65,17 +59,11 @@
             <sl-details class="runtime-details" summary="Runtime">
               <div class="runtime-controls">
                 <sl-switch id="adopt-search" size="small">Search</sl-switch>
-                <sl-switch id="adopt-bypass" size="small">Bypass approvals and sandbox</sl-switch>
-                <sl-select id="adopt-sandbox" label="Sandbox" size="small">
-                  <sl-option value="read-only">read-only</sl-option>
-                  <sl-option value="workspace-write">workspace-write</sl-option>
-                  <sl-option value="danger-full-access">danger-full-access</sl-option>
-                </sl-select>
-                <sl-select id="adopt-approval-policy" label="Approval" size="small">
-                  <sl-option value="untrusted">untrusted</sl-option>
-                  <sl-option value="on-failure">on-failure</sl-option>
-                  <sl-option value="on-request">on-request</sl-option>
-                  <sl-option value="never">never</sl-option>
+                <sl-select id="adopt-permission-mode" label="Permission mode" size="small">
+                  <sl-option value="default">Default</sl-option>
+                  <sl-option value="read-only">Read Only</sl-option>
+                  <sl-option value="safe-yolo">Safe Yolo</sl-option>
+                  <sl-option value="yolo">Yolo</sl-option>
                 </sl-select>
               </div>
             </sl-details>
@@ -147,17 +135,11 @@
   <sl-dialog id="runtime-dialog" label="Session runtime">
     <div class="runtime-controls">
       <sl-switch id="runtime-search" size="small">Search</sl-switch>
-      <sl-switch id="runtime-bypass" size="small">Bypass approvals and sandbox</sl-switch>
-      <sl-select id="runtime-sandbox" label="Sandbox" size="small">
-        <sl-option value="read-only">read-only</sl-option>
-        <sl-option value="workspace-write">workspace-write</sl-option>
-        <sl-option value="danger-full-access">danger-full-access</sl-option>
-      </sl-select>
-      <sl-select id="runtime-approval-policy" label="Approval" size="small">
-        <sl-option value="untrusted">untrusted</sl-option>
-        <sl-option value="on-failure">on-failure</sl-option>
-        <sl-option value="on-request">on-request</sl-option>
-        <sl-option value="never">never</sl-option>
+      <sl-select id="runtime-permission-mode" label="Permission mode" size="small">
+        <sl-option value="default">Default</sl-option>
+        <sl-option value="read-only">Read Only</sl-option>
+        <sl-option value="safe-yolo">Safe Yolo</sl-option>
+        <sl-option value="yolo">Yolo</sl-option>
       </sl-select>
       <sl-input id="runtime-model" label="Model" size="small"></sl-input>
       <sl-input id="runtime-reasoning-effort" label="Reasoning effort" size="small"></sl-input>

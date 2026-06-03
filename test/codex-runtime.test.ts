@@ -5,9 +5,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Session } from '../src/domain/types.js';
 import { CodexRuntime } from '../src/agents/codex/runtime.js';
+import { resolveCodexPermissionModeConfig } from '../src/agents/codex/permission-mode.js';
 import { configureLogger } from '../src/logger.js';
 
 configureLogger({ level: 'error', console: false, prompts: false });
+
+test('Codex permission modes resolve to app-server policies', () => {
+  assert.deepEqual(resolveCodexPermissionModeConfig('default'), {
+    approvalPolicy: 'on-request',
+    permissions: ':workspace',
+  });
+  assert.deepEqual(resolveCodexPermissionModeConfig('read-only'), {
+    approvalPolicy: 'never',
+    permissions: ':read-only',
+  });
+  assert.deepEqual(resolveCodexPermissionModeConfig('safe-yolo'), {
+    approvalPolicy: 'on-failure',
+    permissions: ':workspace',
+  });
+  assert.deepEqual(resolveCodexPermissionModeConfig('yolo'), {
+    approvalPolicy: 'never',
+    permissions: ':danger-full-access',
+  });
+});
 
 test('CodexRuntime resumes a persisted thread before starting a turn', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
@@ -65,16 +85,14 @@ test('CodexRuntime starts a new thread when no thread id is stored', async () =>
   }
 });
 
-test('CodexRuntime forwards search and dangerous bypass permissions', async () => {
+test('CodexRuntime forwards search and yolo permissions', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'cx-tg-runtime-'));
   const fake = createFakeCodexBin(tempDir);
   const runtime = new CodexRuntime({
     bin: fake.bin,
     session: sessionFixture(null, {
-      approvalPolicy: 'never',
-      sandbox: 'danger-full-access',
+      permissionMode: 'yolo',
       search: true,
-      bypassApprovalsAndSandbox: true,
     }),
     onEvent: () => {},
     onThread: () => {},
@@ -119,10 +137,8 @@ function sessionFixture(codexThreadId: string | null, config: Partial<Session['c
     controlLeaseExpiresAt: null,
     controlUpdatedAt: null,
     config: {
-      approvalPolicy: 'on-request',
-      sandbox: 'workspace-write',
+      permissionMode: 'default',
       search: false,
-      bypassApprovalsAndSandbox: false,
       ...config,
     },
     createdAt: now,
