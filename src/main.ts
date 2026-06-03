@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { pathToFileURL } from 'node:url';
 import { configureLogger, logger } from './logger.js';
-import { loadConfig } from './config/config.js';
+import { loadConfig, serverPublicUrl, serverTokenUrl } from './config/config.js';
 import { runCli } from './cli.js';
 
 export async function startApp(): Promise<void> {
@@ -40,9 +40,10 @@ export async function startApp(): Promise<void> {
   await server.start();
   await telegram.start();
 
-  const publicUrl = config.server.publicUrl || `http://${config.server.host}:${config.server.port}`;
+  const publicUrl = serverPublicUrl(config);
   logger.info('cx-tg started', { url: publicUrl });
   console.log(`CX TG Hub: ${publicUrl}`);
+  console.log(`Web login: ${serverTokenUrl(config)}`);
   console.log(`Web token: ${config.server.accessToken}`);
   console.log(`Settings: ${config.settingsPath}`);
 

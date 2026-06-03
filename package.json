@@ -1,8 +1,12 @@
 {
   "name": "cx-tg",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
   "bin": {
     "cx-tg": "./dist/main.js",
     "cc-hub": "./dist/main.js"
@@ -17,7 +21,8 @@
     "start": "node dist/main.js hub",
     "test": "node --import tsx --test test/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "check": "pnpm typecheck && pnpm test && pnpm build"
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "prepack": "pnpm build"
   },
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",

@@ -56,13 +56,25 @@ Doctor checks these sections:
 
 Local checks run without a live Hub. Hub checks use `/api/health` and `/api/status` when the server is reachable.
 
+## Public URL
+
+`server.publicUrl` is the canonical external Web root. It must be an absolute URL. Query and hash components are invalid.
+
+When the URL has a path, Hub uses that path as its mount path for Web, static assets, REST APIs, and SSE. For example:
+
+```bash
+cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+```
+
+The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and APIs at `/apps/cx-tg/api/*`. Reverse proxies must preserve that prefix.
+
 ## Editable Fields
 
 | Key | Type | Env | Restart |
 |---|---:|---|---|
 | `server.host` | string | `CX_TG_HOST` | yes |
 | `server.port` | number | `CX_TG_PORT` | yes |
-| `server.publicUrl` | string | `CX_TG_PUBLIC_URL` | no |
+| `server.publicUrl` | absolute URL or empty | `CX_TG_PUBLIC_URL` | no |
 | `server.accessToken` | string | `CX_TG_ACCESS_TOKEN` | yes |
 | `cluster.name` | string |  | yes |
 | `cluster.peers` | json |  | yes |
@@ -95,17 +107,23 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
   "server": {
     "host": "0.0.0.0",
     "port": 3030,
-    "publicUrl": "",
+    "publicUrl": "https://gateway.1662803.xyz/apps/cx-tg",
     "accessToken": "generated-token"
   },
   "cluster": {
     "name": "server-node",
     "peers": [
       {
-        "id": "laptop",
-        "name": "Laptop",
-        "url": "http://10.0.0.12:3030",
-        "accessToken": "peer-token"
+        "id": "mac",
+        "name": "Mac",
+        "url": "http://10.126.126.2:3030",
+        "accessToken": "mac-token"
+      },
+      {
+        "id": "mint",
+        "name": "Linux Mint",
+        "url": "http://10.126.126.3:3030",
+        "accessToken": "mint-token"
       }
     ]
   },
@@ -151,6 +169,26 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 ```
 
 Each peer entry points at another `cx-tg hub` instance. The central Hub keeps browsing, switching, and notifications in one Web UI, while the remote node keeps its own Codex runtime, queue, approvals, and persistence.
+
+Peer URLs are Hub roots. They can be bare LAN origins such as `http://10.126.126.3:3030` or path-based Hub roots such as `https://gateway.1662803.xyz/apps/cx-tg-peer`.
+
+For the `gateway.1662803.xyz/apps/cx-tg` deployment, the gateway node uses:
+
+```bash
+cx-tg config set cluster.name gateway
+cx-tg config set server.host 127.0.0.1
+cx-tg config set server.port 3030
+cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+```
+
+Each peer node keeps `cluster.peers` empty and listens on the EasyTier LAN:
+
+```bash
+cx-tg config set server.host 0.0.0.0
+cx-tg config set server.port 3030
+cx-tg config set cluster.peers '[]'
+```
 
 ## Web Settings API
 

@@ -13,6 +13,12 @@ import '@shoelace-style/shoelace/dist/components/textarea/textarea.js';
 import { WEB_CONTROL_TTL_MS } from '../controls/control-actions.js';
 import './styles.css';
 
+declare global {
+  interface Window {
+    __CX_TG_BASE_PATH__?: string;
+  }
+}
+
 type JsonObject = Record<string, unknown>;
 
 type SessionConfig = {
@@ -213,25 +219,26 @@ if (!clientId) {
 
 const controlLabel = `Web ${clientId.slice(0, 8)}`;
 const jsonHeaders = { 'Content-Type': 'application/json' };
+const appBasePath = normalizeBasePath(window.__CX_TG_BASE_PATH__ || '');
 const apiPath = {
-  auth: '/api/auth',
-  status: '/api/status',
-  workspaces: '/api/workspaces',
-  sessions: '/api/sessions',
-  sessionsForCwd: (nodeId: string, cwd: string) => `/api/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}`,
-  adoptSession: '/api/sessions/adopt',
-  codexSessions: (nodeId: string, cwd: string) => `/api/codex/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}&limit=100`,
-  codexSessionPreview: (nodeId: string, threadId: string) => `/api/codex/sessions/${encodeURIComponent(threadId)}/preview?nodeId=${encodeURIComponent(nodeId)}`,
-  files: (workspaceId: string, path: string) => `/api/files?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(path)}`,
-  session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
-  approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
-  approvalResolve: (id: string) => `/api/approvals/${encodeURIComponent(id)}/resolve`,
+  auth: appPath('/api/auth'),
+  status: appPath('/api/status'),
+  workspaces: appPath('/api/workspaces'),
+  sessions: appPath('/api/sessions'),
+  sessionsForCwd: (nodeId: string, cwd: string) => appPath(`/api/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}`),
+  adoptSession: appPath('/api/sessions/adopt'),
+  codexSessions: (nodeId: string, cwd: string) => appPath(`/api/codex/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}&limit=100`),
+  codexSessionPreview: (nodeId: string, threadId: string) => appPath(`/api/codex/sessions/${encodeURIComponent(threadId)}/preview?nodeId=${encodeURIComponent(nodeId)}`),
+  files: (workspaceId: string, path: string) => appPath(`/api/files?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(path)}`),
+  session: (id: string, suffix = '') => appPath(`/api/sessions/${encodeURIComponent(id)}${suffix}`),
+  approvals: (sessionId: string) => appPath(`/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`),
+  approvalResolve: (id: string) => appPath(`/api/approvals/${encodeURIComponent(id)}/resolve`),
   events: (sessionId: string | undefined, afterId: number | undefined) => {
     const params = new URLSearchParams();
     if (sessionId) params.set('sessionId', sessionId);
     if (afterId) params.set('afterId', String(afterId));
     const query = params.toString();
-    return query ? `/api/events?${query}` : '/api/events';
+    return appPath(query ? `/api/events?${query}` : '/api/events');
   },
 };
 
@@ -307,6 +314,15 @@ function displayPath(path: string, nodeId?: string): string {
 
 function truncateText(text: string, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
+}
+
+function appPath(path: string): string {
+  return `${appBasePath}${path}`;
+}
+
+function normalizeBasePath(path: string): string {
+  const trimmed = path.replace(/\/+$/, '');
+  return trimmed === '/' ? '' : trimmed;
 }
 
 async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {

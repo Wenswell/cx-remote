@@ -978,7 +978,7 @@ class RemoteHubClient {
   }
 
   private url(path: string, query: Record<string, string>): string {
-    const url = new URL(path, withTrailingSlash(this.peer.url));
+    const url = new URL(path.replace(/^\/+/, ''), withTrailingSlash(this.peer.url));
     for (const [key, value] of Object.entries(query)) {
       if (value) url.searchParams.set(key, value);
     }

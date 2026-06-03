@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { run, type RunnerHandle } from '@grammyjs/runner';
 import type { Api, RawApi } from 'grammy';
 import type { AppConfig } from '../config/config.js';
+import { serverTokenUrl } from '../config/config.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import type { Approval, HubEvent, Message, Session } from '../domain/types.js';
 import { escapeHtml } from '../utils.js';
@@ -218,8 +219,7 @@ export class TelegramControl {
   }
 
   private publicUrl(): string {
-    const base = this.config.server.publicUrl || `http://${this.config.server.host}:${this.config.server.port}`;
-    return `${base.replace(/\/$/, '')}/?token=${encodeURIComponent(this.config.server.accessToken)}`;
+    return serverTokenUrl(this.config);
   }
 
   private async send(target: TelegramTarget, text: string): Promise<void> {

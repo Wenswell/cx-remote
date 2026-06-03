@@ -24,6 +24,19 @@ pnpm build
 The project requires Node.js 25 or newer because it uses `node:sqlite`.
 `pnpm build` runs the Vite Web build into `dist/web` and the Node server build into `dist`.
 
+Install the built package globally from a checkout or packed tarball:
+
+```bash
+pnpm add -g /home/ilove/Documents/repos/cx-tg
+cx-tg --help
+```
+
+After registry publication the install command is:
+
+```bash
+pnpm add -g cx-tg
+```
+
 Development commands:
 
 ```bash
@@ -66,6 +79,19 @@ Open:
 
 ```text
 http://127.0.0.1:3030/?token=<access-token>
+```
+
+When `server.publicUrl` includes a path, that path is the Hub mount path. For a gateway deployment:
+
+```bash
+cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+cx-tg hub
+```
+
+Open:
+
+```text
+https://gateway.1662803.xyz/apps/cx-tg/?token=<access-token>
 ```
 
 The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
@@ -130,6 +156,75 @@ cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 
 Search is enabled by default. Use `--no-search` to disable it for one session. `model=auto` and `reasoningEffort=default` leave those choices to Codex; Web labels them as `Default(<resolved value>)`. `--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
+
+## LAN Gateway
+
+Recommended topology for `gateway.1662803.xyz/apps/cx-tg`:
+
+```text
+Browser
+  -> gateway.1662803.xyz/apps/cx-tg
+  -> Caddy on 10.126.126.1
+  -> central cx-tg Hub on 127.0.0.1:3030
+  -> peer Hubs on 10.126.126.2:3030 and 10.126.126.3:3030
+```
+
+Central Hub on the gateway server:
+
+```bash
+cx-tg config set cluster.name gateway
+cx-tg config set server.host 127.0.0.1
+cx-tg config set server.port 3030
+cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+cx-tg config set server.accessToken '<central-token>'
+cx-tg config set workspace.roots /home/ravvss
+cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+cx-tg hub
+```
+
+Peer Hub on `10.126.126.2`:
+
+```bash
+cx-tg config set cluster.name mac
+cx-tg config set server.host 0.0.0.0
+cx-tg config set server.port 3030
+cx-tg config set server.accessToken '<mac-token>'
+cx-tg config set cluster.peers '[]'
+cx-tg config set workspace.roots /home/wswensw
+cx-tg hub
+```
+
+Peer Hub on `10.126.126.3`:
+
+```bash
+cx-tg config set cluster.name mint
+cx-tg config set server.host 0.0.0.0
+cx-tg config set server.port 3030
+cx-tg config set server.accessToken '<mint-token>'
+cx-tg config set cluster.peers '[]'
+cx-tg config set workspace.roots /home/ilove/Documents/repos
+cx-tg hub
+```
+
+Caddy keeps the `/apps/cx-tg` prefix when proxying:
+
+```caddyfile
+gateway.1662803.xyz {
+  @cx_tg path /apps/cx-tg /apps/cx-tg/*
+  handle @cx_tg {
+    basic_auth {
+      ravvss <caddy-password-hash>
+    }
+    reverse_proxy 127.0.0.1:3030
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:4318
+  }
+}
+```
+
+Use the existing gateway public routes before the final `handle` when this snippet is merged into the live Caddyfile.
 
 ## Telegram
 

@@ -272,6 +272,7 @@ test('session detail and create APIs proxy remote nodes', async () => {
   const remote = createTestApp({
     configure: (config) => {
       config.cluster.name = 'Remote node';
+      config.server.publicUrl = 'https://remote.example/apps/cx-tg';
       config.server.accessToken = 'remote-access-token';
     },
   });
@@ -281,7 +282,7 @@ test('session detail and create APIs proxy remote nodes', async () => {
       config.cluster.peers = [{
         id: 'remote1',
         name: 'Remote node',
-        url: 'http://remote.test',
+        url: 'http://remote.test/apps/cx-tg',
         accessToken: 'remote-access-token',
       }];
     },
@@ -687,6 +688,64 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     assert.equal(fallback.status, 200);
     assert.match(await fallback.text(), /\/assets\/main\.js/);
   } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('web, API, and event routes mount below publicUrl path', async () => {
+  const context = createTestApp({
+    configure: (config) => {
+      config.server.publicUrl = 'https://gateway.1662803.xyz/apps/cx-tg';
+    },
+  });
+  const abort = new AbortController();
+
+  try {
+    const session = createSession(context.store);
+
+    const redirect = await context.app.request('/apps/cx-tg');
+    assert.equal(redirect.status, 302);
+    assert.equal(redirect.headers.get('location'), '/apps/cx-tg/');
+
+    const page = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html' } });
+    const html = await page.text();
+    assert.equal(page.status, 200);
+    assert.match(html, /<base href="\/apps\/cx-tg\/">/);
+    assert.match(html, /window\.__CX_TG_BASE_PATH__="\/apps\/cx-tg"/);
+    assert.match(html, /\/apps\/cx-tg\/assets\/main\.css/);
+    assert.match(html, /\/apps\/cx-tg\/assets\/main\.js/);
+
+    const css = await context.app.request('/apps/cx-tg/assets/main.css');
+    assert.equal(css.status, 200);
+    assert.match(await css.text(), /\.shell/);
+
+    const rootApi = await context.app.request('/api/status', { headers: authHeaders(context.config) });
+    assert.equal(rootApi.status, 404);
+
+    const login = await context.app.request('/apps/cx-tg/api/auth', {
+      method: 'POST',
+      headers: authHeaders(context.config),
+    });
+    const cookie = login.headers.get('set-cookie') || '';
+    assert.equal(login.status, 200);
+    assert.match(cookie, /Path=\/apps\/cx-tg/);
+    assert.match(cookie, /Secure/);
+
+    const status = await json<{ server: { basePath: string } }>(await context.app.request(
+      '/apps/cx-tg/api/status',
+      { headers: { Cookie: cookie } },
+    ));
+    assert.equal(status.server.basePath, '/apps/cx-tg');
+
+    const events = await context.app.request(
+      `/apps/cx-tg/api/events?sessionId=${encodeURIComponent(session.id)}`,
+      { headers: { Cookie: cookie }, signal: abort.signal },
+    );
+    const text = await readInitialSse(events, abort);
+    assert.equal(events.status, 200);
+    assert.match(text, /"type":"ready"/);
+  } finally {
+    abort.abort();
     await closeTestHub(context);
   }
 });

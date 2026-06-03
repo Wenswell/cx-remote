@@ -7,6 +7,7 @@ Web / Telegram / CLI
         │
         ▼
 HubServer
+  - optional publicUrl path mount
   - local ControlHub
   - remote node proxy
   - cross-node event fan-in
@@ -90,7 +91,23 @@ Pending approvals are expired when their Codex turn can no longer continue, incl
 
 ## HTTP API
 
-The Hub serves API/SSE routes and the built Web app. Vite writes the browser bundle to `dist/web`; Hono serves `/`, `/assets/*`, and HTML page fallbacks from that directory. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
+The Hub serves API/SSE routes and the built Web app. Vite writes the browser bundle to `dist/web`.
+
+By default Hono serves `/`, `/assets/*`, and `/api/*`. When `server.publicUrl` contains a path, that path becomes the application mount path. With:
+
+```text
+server.publicUrl = https://gateway.1662803.xyz/apps/cx-tg
+```
+
+the Hub serves:
+
+```text
+/apps/cx-tg/             Web
+/apps/cx-tg/assets/*     built assets
+/apps/cx-tg/api/*        REST and SSE
+```
+
+The reverse proxy preserves the prefix. Hono redirects `/apps/cx-tg` to `/apps/cx-tg/`, injects the browser base path into `index.html`, and scopes the Web auth cookie to the mount path. `/api/*` routes stay JSON-only and never fall through to the Web HTML.
 
 The Hub API uses bearer auth and JSON errors:
 
@@ -133,6 +150,8 @@ PATCH  /api/settings
 GET    /api/events
 ```
 
+These endpoint paths are relative to the mount path. Under `/apps/cx-tg`, `GET /api/status` becomes `GET /apps/cx-tg/api/status`.
+
 API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
@@ -151,6 +170,19 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg
 `POST /api/approvals/:id/resolve` accepts `controlType=web|cli|telegram` and records the resolving control source.
 
 Web notification preferences are browser-local. The per-session notify switch stores enabled session ids in `localStorage`; while Web is open, a global SSE stream uses the standard browser Notification API when an assistant response is created for any enabled session.
+
+## Gateway Deployment
+
+The gateway deployment keeps Codex runtime state on each node and uses the gateway Hub as an aggregator:
+
+```text
+https://gateway.1662803.xyz/apps/cx-tg
+  -> Caddy on 10.126.126.1
+  -> gateway Hub on 127.0.0.1:3030
+  -> peer Hubs on 10.126.126.2:3030 and 10.126.126.3:3030
+```
+
+Caddy matches `/apps/cx-tg` and `/apps/cx-tg/*`, then proxies to the gateway Hub while preserving the path prefix. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-tg` and `cluster.peers` entries for the peer LAN URLs.
 
 ## Control Ownership
 

@@ -16,12 +16,13 @@ const clusterPeerSchema = z.object({
   url: z.string().url(),
   accessToken: z.string().min(1),
 });
+const publicUrlSchema = z.union([z.literal(''), z.string().url()]);
 
 export const settingsSchema = z.object({
   server: z.object({
     host: z.string().min(1).default('0.0.0.0'),
     port: z.coerce.number().int().min(1).max(65535).default(3030),
-    publicUrl: z.string().default(''),
+    publicUrl: publicUrlSchema.default(''),
     accessToken: z.string().min(16),
   }),
   cluster: z.object({
@@ -201,9 +202,25 @@ export function patchSettings(patch: ConfigPatch): Settings {
 
 export function validateSettings(input: unknown): Settings {
   const settings = settingsSchema.parse(input) as Settings;
+  validatePublicUrl(settings);
   validateTelegram(settings);
   validateCluster(settings);
   return settings;
+}
+
+export function serverBasePath(publicUrl: string): string {
+  if (!publicUrl) return '';
+  return normalizeBasePath(new URL(publicUrl).pathname);
+}
+
+export function serverPublicUrl(config: Pick<AppConfig, 'server'> | Pick<Settings, 'server'>): string {
+  if (config.server.publicUrl) return trimTrailingSlash(config.server.publicUrl);
+  const host = config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host;
+  return `http://${host}:${config.server.port}`;
+}
+
+export function serverTokenUrl(config: Pick<AppConfig, 'server'> | Pick<Settings, 'server'>): string {
+  return `${serverPublicUrl(config)}/?token=${encodeURIComponent(config.server.accessToken)}`;
 }
 
 export function listSettingFields(): SettingField[] {
@@ -439,6 +456,12 @@ function validateTelegram(config: Settings): void {
   }
 }
 
+function validatePublicUrl(config: Settings): void {
+  if (!config.server.publicUrl) return;
+  const url = new URL(config.server.publicUrl);
+  if (url.search || url.hash) throw new Error('server.publicUrl must not include query or hash');
+}
+
 function validateCluster(config: Settings): void {
   const ids = new Set<string>();
   for (const peer of config.cluster.peers) {
@@ -460,4 +483,13 @@ function maskClusterPeerSecrets(settings: Record<string, unknown>): void {
       (peer as Record<string, unknown>).accessToken = maskSecret(token);
     }
   }
+}
+
+function normalizeBasePath(pathname: string): string {
+  const normalized = pathname.replace(/\/+$/, '');
+  return normalized === '' || normalized === '/' ? '' : normalized;
+}
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, '');
 }

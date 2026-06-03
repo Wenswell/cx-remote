@@ -1,15 +1,15 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, basename, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { ClusterService, LOCAL_NODE_ID, type NodeStatusView } from '../cluster/service.js';
 import { resolveCodexRuntimeDefaults } from '../agents/codex/defaults.js';
-import { getSettingValue, isPathInside, listSettingFields, maskSettings, resolveWorkspacePath, setSettingValue, type AppConfig } from '../config/config.js';
+import { getSettingValue, isPathInside, listSettingFields, maskSettings, resolveWorkspacePath, serverBasePath, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 import type { PromptJobStatus } from '../domain/types.js';
@@ -147,8 +147,14 @@ export class HubServer {
   createApp(): Hono {
     const app = new Hono();
     const webDistDir = this.options.webDistDir || defaultWebDistDir();
-    const serveWebIndex = serveStatic({ root: webDistDir, path: 'index.html' });
-    const serveWebAsset = serveStatic({ root: webDistDir });
+    const basePath = serverBasePath(this.config.server.publicUrl);
+    const webIndex = renderWebIndex(webDistDir, basePath);
+    const serveWebIndex = (c: Context) => c.html(webIndex);
+    const serveWebAsset = serveStatic({
+      root: webDistDir,
+      rewriteRequestPath: (path) => stripBasePath(path, basePath),
+    });
+    const route = (path: string) => routePath(basePath, path);
 
     app.use('*', cors());
     app.use('*', async (c, next) => {
@@ -168,19 +174,19 @@ export class HubServer {
     });
     app.notFound((c) => c.json({ error: { message: 'Not found' } }, 404));
 
-    app.use('/api/*', async (c, next) => {
+    app.use(route('/api/*'), async (c, next) => {
       if (!isAuthorizedRequest(c.req.header('authorization'), c.req.header('cookie'), this.config.server.accessToken)) {
         return c.json({ error: { message: 'Unauthorized' } }, 401);
       }
       await next();
     });
 
-    app.post('/api/auth', (c) => {
-      c.header('Set-Cookie', authCookie(this.config.server.accessToken, isSecureCookie(this.config.server.publicUrl)));
+    app.post(route('/api/auth'), (c) => {
+      c.header('Set-Cookie', authCookie(this.config.server.accessToken, isSecureCookie(this.config.server.publicUrl), basePath));
       return c.json({ ok: true });
     });
-    app.get('/api/health', (c) => c.json({ ok: true, name: 'cx-tg' }));
-    app.get('/api/status', async (c) => {
+    app.get(route('/api/health'), (c) => c.json({ ok: true, name: 'cx-tg' }));
+    app.get(route('/api/status'), async (c) => {
       const localOnly = isLocalScope(c.req.query('scope'));
       const nodes = await this.cluster.listNodes(localOnly);
       return c.json({
@@ -201,6 +207,7 @@ export class HubServer {
           host: this.config.server.host,
           port: this.config.server.port,
           publicUrl: this.config.server.publicUrl,
+          basePath,
         },
         controls: {
           telegram: {
@@ -213,11 +220,11 @@ export class HubServer {
       });
     });
 
-    app.get('/api/workspaces', async (c) => {
+    app.get(route('/api/workspaces'), async (c) => {
       return c.json(await this.cluster.listWorkspaces(isLocalScope(c.req.query('scope'))));
     });
 
-    app.get('/api/files', async (c) => {
+    app.get(route('/api/files'), async (c) => {
       const workspaceId = c.req.query('workspaceId');
       const path = c.req.query('path') || '';
       if (workspaceId) return c.json(await this.cluster.listFiles(workspaceId, path));
@@ -252,7 +259,7 @@ export class HubServer {
       });
     });
 
-    app.get('/api/codex/sessions', async (c) => {
+    app.get(route('/api/codex/sessions'), async (c) => {
       const input = codexSessionsQuerySchema.parse({
         nodeId: c.req.query('nodeId'),
         cwd: c.req.query('cwd'),
@@ -266,7 +273,7 @@ export class HubServer {
       }));
     });
 
-    app.get('/api/codex/sessions/:threadId/preview', async (c) => {
+    app.get(route('/api/codex/sessions/:threadId/preview'), async (c) => {
       const threadId = z.string().min(1).parse(c.req.param('threadId'));
       return c.json(await this.cluster.previewCodexSession({
         threadId,
@@ -275,7 +282,7 @@ export class HubServer {
       }));
     });
 
-    app.get('/api/settings', (c) => c.json({
+    app.get(route('/api/settings'), (c) => c.json({
       settings: maskSettings(this.config),
       fields: listSettingFields().map((field) => ({
         ...field,
@@ -283,7 +290,7 @@ export class HubServer {
       })),
     }));
 
-    app.patch('/api/settings', async (c) => {
+    app.patch(route('/api/settings'), async (c) => {
       const input = updateSettingSchema.parse(await c.req.json());
       const field = findSettingField(input.key);
       const settings = setSettingValue(input.key, input.value);
@@ -294,7 +301,7 @@ export class HubServer {
       });
     });
 
-    app.get('/api/sessions', async (c) => {
+    app.get(route('/api/sessions'), async (c) => {
       const input = sessionsQuerySchema.parse({
         nodeId: c.req.query('nodeId'),
         cwd: c.req.query('cwd'),
@@ -305,7 +312,7 @@ export class HubServer {
         localOnly: isLocalScope(c.req.query('scope')) || Boolean(input.cwd && !input.nodeId),
       }));
     });
-    app.post('/api/sessions', async (c) => {
+    app.post(route('/api/sessions'), async (c) => {
       const input = createSessionSchema.parse(await c.req.json());
       const session = await this.cluster.createSession({
         nodeId: input.nodeId,
@@ -316,7 +323,7 @@ export class HubServer {
       return c.json(session, 201);
     });
 
-    app.post('/api/sessions/adopt', async (c) => {
+    app.post(route('/api/sessions/adopt'), async (c) => {
       const input = adoptSessionSchema.parse(await c.req.json());
       const session = await this.cluster.adoptSession({
         nodeId: input.nodeId,
@@ -329,26 +336,26 @@ export class HubServer {
       return c.json(session, 201);
     });
 
-    app.get('/api/sessions/:id', async (c) => c.json(await this.cluster.getSessionDetail(c.req.param('id'))));
+    app.get(route('/api/sessions/:id'), async (c) => c.json(await this.cluster.getSessionDetail(routeParam(c, 'id'))));
 
-    app.patch('/api/sessions/:id', async (c) => {
+    app.patch(route('/api/sessions/:id'), async (c) => {
       const input = updateSessionSchema.parse(await c.req.json());
-      return c.json(await this.cluster.renameSession(c.req.param('id'), input.title));
+      return c.json(await this.cluster.renameSession(routeParam(c, 'id'), input.title));
     });
 
-    app.patch('/api/sessions/:id/config', async (c) => {
+    app.patch(route('/api/sessions/:id/config'), async (c) => {
       const input = updateSessionConfigSchema.parse(await c.req.json());
-      return c.json(await this.cluster.updateSessionConfig(c.req.param('id'), input.config));
+      return c.json(await this.cluster.updateSessionConfig(routeParam(c, 'id'), input.config));
     });
 
-    app.delete('/api/sessions/:id', async (c) => {
-      await this.cluster.deleteSession(c.req.param('id'));
+    app.delete(route('/api/sessions/:id'), async (c) => {
+      await this.cluster.deleteSession(routeParam(c, 'id'));
       return c.json({ ok: true });
     });
 
-    app.patch('/api/sessions/:id/control', async (c) => {
+    app.patch(route('/api/sessions/:id/control'), async (c) => {
       const input = claimControlSchema.parse(await c.req.json());
-      return c.json(await this.cluster.claimControl(c.req.param('id'), {
+      return c.json(await this.cluster.claimControl(routeParam(c, 'id'), {
         controlType: input.controlType,
         ownerId: input.ownerId,
         controlLabel: input.controlLabel,
@@ -356,26 +363,26 @@ export class HubServer {
       }));
     });
 
-    app.delete('/api/sessions/:id/control', async (c) => {
-      return c.json(await this.cluster.releaseControl(c.req.param('id'), c.req.query('ownerId') || undefined));
+    app.delete(route('/api/sessions/:id/control'), async (c) => {
+      return c.json(await this.cluster.releaseControl(routeParam(c, 'id'), c.req.query('ownerId') || undefined));
     });
 
-    app.get('/api/sessions/:id/messages', async (c) => c.json(await this.cluster.listMessages(c.req.param('id'), {
+    app.get(route('/api/sessions/:id/messages'), async (c) => c.json(await this.cluster.listMessages(routeParam(c, 'id'), {
       limit: parseLimit(c.req.query('limit'), 200),
       afterId: c.req.query('afterId') || undefined,
     })));
 
-    app.get('/api/sessions/:id/queue', async (c) => {
+    app.get(route('/api/sessions/:id/queue'), async (c) => {
       const status = promptJobStatusSchema.parse(c.req.query('status') || 'active');
-      return c.json(await this.cluster.listPromptJobs(c.req.param('id'), {
+      return c.json(await this.cluster.listPromptJobs(routeParam(c, 'id'), {
         statuses: promptJobStatuses(status),
         limit: parseLimit(c.req.query('limit'), 100),
       }));
     });
 
-    app.post('/api/sessions/:id/messages', async (c) => {
+    app.post(route('/api/sessions/:id/messages'), async (c) => {
       const input = sendMessageSchema.parse(await c.req.json());
-      const message = await this.cluster.sendMessage(c.req.param('id'), {
+      const message = await this.cluster.sendMessage(routeParam(c, 'id'), {
         text: input.text,
         controlType: input.controlType,
         ownerId: input.ownerId,
@@ -384,12 +391,12 @@ export class HubServer {
       return c.json(message, 202);
     });
 
-    app.post('/api/sessions/:id/interrupt', async (c) => {
-      await this.cluster.interrupt(c.req.param('id'));
+    app.post(route('/api/sessions/:id/interrupt'), async (c) => {
+      await this.cluster.interrupt(routeParam(c, 'id'));
       return c.json({ ok: true });
     });
 
-    app.get('/api/approvals', async (c) => {
+    app.get(route('/api/approvals'), async (c) => {
       const sessionId = c.req.query('sessionId');
       const statusParam = c.req.query('status');
       const status = statusParam && statusParam !== 'all' ? approvalStatusSchema.parse(statusParam) : (statusParam === 'all' ? undefined : 'pending');
@@ -401,14 +408,14 @@ export class HubServer {
       }));
     });
 
-    app.post('/api/approvals/:id/resolve', async (c) => {
+    app.post(route('/api/approvals/:id/resolve'), async (c) => {
       const input = resolveApprovalSchema.parse(await c.req.json());
-      await this.cluster.resolveApproval(c.req.param('id'), input.decision, input.controlType);
+      await this.cluster.resolveApproval(routeParam(c, 'id'), input.decision, input.controlType);
       return c.json({ ok: true });
     });
 
-    app.get('/api/bindings', (c) => c.json(this.hub.listBindings()));
-    app.get('/api/events', (c) => {
+    app.get(route('/api/bindings'), (c) => c.json(this.hub.listBindings()));
+    app.get(route('/api/events'), (c) => {
       const sessionId = c.req.query('sessionId') || undefined;
       const localOnly = isLocalScope(c.req.query('scope'));
       const afterId = parseEventId(c.req.header('last-event-id') || c.req.query('afterId'));
@@ -445,14 +452,18 @@ export class HubServer {
       });
     });
 
-    app.get('/', serveWebIndex);
-    app.get('/assets/*', serveWebAsset);
-    app.get('*', async (c, next) => {
-      if (c.req.path.startsWith('/api/') || c.req.path.startsWith('/assets/') || c.req.method !== 'GET' || !acceptsHtml(c.req.header('accept'))) {
+    if (basePath) {
+      app.get(basePath, (c) => c.redirect(`${basePath}/`));
+    }
+    app.get(route('/'), serveWebIndex);
+    app.get(route('/assets/*'), serveWebAsset);
+    app.get(basePath ? route('/*') : '*', async (c, next) => {
+      const path = stripBasePath(c.req.path, basePath);
+      if (path.startsWith('/api/') || path.startsWith('/assets/') || c.req.method !== 'GET' || !acceptsHtml(c.req.header('accept'))) {
         await next();
         return;
       }
-      return serveWebIndex(c, next);
+      return serveWebIndex(c);
     });
 
     return app;
@@ -461,6 +472,41 @@ export class HubServer {
 
 function defaultWebDistDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), '../../dist/web');
+}
+
+function renderWebIndex(webDistDir: string, basePath: string): string {
+  const html = readFileSync(join(webDistDir, 'index.html'), 'utf8');
+  const assetPrefix = basePath || '';
+  const normalizedHtml = html
+    .replaceAll('href="/assets/', `href="${assetPrefix}/assets/`)
+    .replaceAll('src="/assets/', `src="${assetPrefix}/assets/`);
+  const bootstrap = [
+    `<base href="${escapeHtmlAttribute(basePath ? `${basePath}/` : '/')}">`,
+    `<script>window.__CX_TG_BASE_PATH__=${JSON.stringify(basePath)};</script>`,
+  ].join('\n  ');
+  return normalizedHtml.includes('</head>')
+    ? normalizedHtml.replace('</head>', `  ${bootstrap}\n</head>`)
+    : `${bootstrap}\n${normalizedHtml}`;
+}
+
+function routePath(basePath: string, path: string): string {
+  if (!basePath) return path;
+  if (path === '/') return `${basePath}/`;
+  return `${basePath}${path}`;
+}
+
+function stripBasePath(path: string, basePath: string): string {
+  if (!basePath) return path;
+  if (path === basePath) return '/';
+  return path.startsWith(`${basePath}/`) ? path.slice(basePath.length) : path;
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function routeParam(c: Context, name: string): string {
+  return z.string().min(1).parse(c.req.param(name));
 }
 
 function acceptsHtml(accept: string | undefined): boolean {
@@ -480,12 +526,12 @@ function authCookieValue(header: string | undefined): string | undefined {
   return undefined;
 }
 
-function authCookie(token: string, secure: boolean): string {
+function authCookie(token: string, secure: boolean, basePath: string): string {
   return [
     `${WEB_AUTH_COOKIE}=${encodeURIComponent(token)}`,
     'HttpOnly',
     'SameSite=Strict',
-    'Path=/',
+    `Path=${basePath || '/'}`,
     ...(secure ? ['Secure'] : []),
   ].join('; ');
 }

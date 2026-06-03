@@ -17,7 +17,7 @@ export interface SettingField {
 export const SETTING_FIELDS: SettingField[] = [
   { key: 'server.host', path: ['server', 'host'], type: 'string', env: 'CX_TG_HOST', restartRequired: true, description: 'Hub listen host' },
   { key: 'server.port', path: ['server', 'port'], type: 'number', env: 'CX_TG_PORT', restartRequired: true, description: 'Hub listen port' },
-  { key: 'server.publicUrl', path: ['server', 'publicUrl'], type: 'string', env: 'CX_TG_PUBLIC_URL', description: 'External Web URL' },
+  { key: 'server.publicUrl', path: ['server', 'publicUrl'], type: 'string', env: 'CX_TG_PUBLIC_URL', description: 'External Web URL; path becomes the Hub mount path' },
   { key: 'server.accessToken', path: ['server', 'accessToken'], type: 'string', env: 'CX_TG_ACCESS_TOKEN', secret: true, restartRequired: true, description: 'API and Web bearer token' },
   { key: 'cluster.name', path: ['cluster', 'name'], type: 'string', restartRequired: true, description: 'Display name for this Hub node' },
   { key: 'cluster.peers', path: ['cluster', 'peers'], type: 'json', secret: true, restartRequired: true, description: 'Remote Hub peer definitions' },

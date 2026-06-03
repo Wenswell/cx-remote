@@ -5,6 +5,7 @@ const repoRoot = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   root: 'src/web',
+  base: './',
   publicDir: false,
   build: {
     outDir: '../../dist/web',

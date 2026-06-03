@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
-import { defaultConfigHome, expandHome, getSettingsPath, maskSecret, readSettings, writeSettings, type Settings } from '../config/config.js';
+import { defaultConfigHome, expandHome, getSettingsPath, maskSecret, readSettings, serverPublicUrl, writeSettings, type Settings } from '../config/config.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 
 export async function runSetup(): Promise<void> {
@@ -94,10 +94,8 @@ export async function runSetup(): Promise<void> {
     };
 
     writeSettings(next);
-    const webHost = next.server.host === '0.0.0.0' ? '127.0.0.1' : next.server.host;
-    const webUrl = next.server.publicUrl || `http://${webHost}:${next.server.port}`;
     console.log(`Saved ${getSettingsPath()}`);
-    console.log(`Web URL: ${webUrl}`);
+    console.log(`Web URL: ${serverPublicUrl(next)}`);
     console.log(`Web token: ${maskSecret(next.server.accessToken)}`);
     console.log(`Workspace roots: ${next.workspace.roots.join(', ')}`);
   } finally {

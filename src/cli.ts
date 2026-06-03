@@ -2,7 +2,7 @@ import { request } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { createInterface } from 'node:readline';
-import { loadConfig } from './config/config.js';
+import { loadConfig, serverBasePath } from './config/config.js';
 import { runSetup } from './cli/setup.js';
 import { runDoctor } from './cli/doctor.js';
 import { runConfigCommand } from './cli/config.js';
@@ -45,7 +45,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     let client: ApiClient | undefined;
     try {
       const { config } = loadConfig();
-      client = new ApiClient(config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host, config.server.port, config.server.accessToken);
+      client = new ApiClient(config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host, config.server.port, config.server.accessToken, serverBasePath(config.server.publicUrl));
     } catch {
       client = undefined;
     }
@@ -54,7 +54,7 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   }
 
   const { config } = loadConfig();
-  const client = new ApiClient(config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host, config.server.port, config.server.accessToken);
+  const client = new ApiClient(config.server.host === '0.0.0.0' ? '127.0.0.1' : config.server.host, config.server.port, config.server.accessToken, serverBasePath(config.server.publicUrl));
 
   switch (command) {
     case 'status': {
@@ -170,6 +170,7 @@ class ApiClient {
     private readonly host: string,
     private readonly port: number,
     private readonly token: string,
+    private readonly basePath: string,
   ) {}
 
   get(path: string): Promise<unknown> {
@@ -194,7 +195,7 @@ class ApiClient {
       const req = request({
         host: this.host,
         port: this.port,
-        path,
+        path: this.path(path),
         method,
         headers: {
           Authorization: `Bearer ${this.token}`,
@@ -223,7 +224,7 @@ class ApiClient {
   }
 
   streamEvents(sessionId: string, onEvent: (event: Record<string, unknown>) => void, onError: (error: Error) => void): () => void {
-    const path = `/api/events?sessionId=${encodeURIComponent(sessionId)}`;
+    const path = this.path(`/api/events?sessionId=${encodeURIComponent(sessionId)}`);
     let buffer = '';
     const req = request({
       host: this.host,
@@ -258,6 +259,10 @@ class ApiClient {
     req.on('error', onError);
     req.end();
     return () => req.destroy();
+  }
+
+  private path(path: string): string {
+    return `${this.basePath}${path}`;
   }
 }
 
