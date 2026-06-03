@@ -71,9 +71,15 @@
   display: none !important;
 }
 
+html,
 body {
   height: 100%;
+  width: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
   font: 14px/1.45 var(--sl-font-sans);
   background: var(--bg);
   color: var(--text);
@@ -119,14 +125,44 @@ sl-button[variant="danger"] {
 .side {
   border-right: 1px solid var(--line);
   padding: 16px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .side.stack {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.side > *,
+.side .stack,
+.side .row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.side sl-button,
+.side sl-input,
+.side sl-select,
+.side sl-textarea,
+.side sl-details {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.side sl-button::part(base),
+.side sl-button::part(label),
+.side sl-input::part(base),
+.side sl-select::part(combobox),
+.side sl-textarea::part(base),
+.side sl-details::part(base),
+.side sl-details::part(header),
+.side sl-details::part(content) {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .side-head,
@@ -141,10 +177,19 @@ sl-button[variant="danger"] {
 .side-head,
 .section-head {
   justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.side-head > div,
+.topbar-title > div {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .section-head > strong {
   padding-top: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .workspace-panel,
@@ -215,6 +260,7 @@ sl-button.icon-button::part(base) {
 
 .row > sl-input {
   flex: 1 1 180px;
+  min-width: 0;
 }
 
 .row > sl-button {
@@ -316,7 +362,8 @@ sl-details.session-details::part(content) {
   display: grid;
   gap: 6px;
   max-height: 180px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px;
@@ -331,6 +378,13 @@ sl-button.dir-button::part(base) {
   width: 100%;
   justify-content: flex-start;
   text-align: left;
+}
+
+sl-button.dir-button::part(label) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .details {
@@ -486,6 +540,49 @@ pre {
   padding: 8px;
   border-radius: 6px;
   margin: 0;
+}
+
+#adopt-dialog::part(panel) {
+  width: min(720px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+}
+
+.adopt-preview {
+  min-width: 0;
+}
+
+.adopt-preview-messages {
+  max-height: 52vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.preview-msg {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.preview-msg.user {
+  border-left: 4px solid var(--user-accent);
+}
+
+.preview-msg.assistant {
+  border-left: 4px solid var(--assistant-accent);
+}
+
+.preview-msg-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.preview-msg-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 #error-alert {

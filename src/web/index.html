@@ -170,6 +170,17 @@
     <sl-button slot="footer" id="runtime-cancel" type="button">Cancel</sl-button>
     <sl-button slot="footer" id="runtime-save" type="button" variant="primary">Save</sl-button>
   </sl-dialog>
+  <sl-dialog id="adopt-dialog" label="Adopt Codex session">
+    <div class="adopt-preview stack">
+      <div>
+        <div class="title" id="adopt-title"></div>
+        <div class="details" id="adopt-meta"></div>
+      </div>
+      <div id="adopt-preview-messages" class="adopt-preview-messages stack"></div>
+    </div>
+    <sl-button slot="footer" id="adopt-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="adopt-confirm" type="button" variant="primary">Adopt and import</sl-button>
+  </sl-dialog>
   <sl-dialog id="delete-dialog" label="Delete Hub session">
     <div id="delete-dialog-message">Delete this session?</div>
     <div class="muted">This removes Hub messages, queue, approvals, and events. The Codex thread remains in Codex.</div>

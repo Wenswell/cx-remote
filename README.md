@@ -76,7 +76,7 @@ The Web console can:
 
 - create Hub-managed sessions from configured workspace roots
 - browse Hub-managed sessions under the selected workspace directory
-- browse native Codex sessions under the selected workspace directory and adopt one into Hub
+- preview native Codex sessions under the selected workspace directory, then adopt one into Hub with its transcript imported
 - browse workspace directories
 - send messages to Codex
 - view Hub messages, runtime status, Codex config, thread id, and turn id
@@ -102,7 +102,7 @@ cx-tg sessions
 cx-tg session <session-id>
 cx-tg messages <session-id>
 cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
-cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg
+cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg --import
 cx-tg session-config <session-id> --search --permission-mode yolo
 cx-tg send <session-id> "check git status"
 cx-tg attach <session-id>
@@ -117,7 +117,7 @@ cx-tg doctor
 
 `cc-hub` is kept as an alias for the same binary.
 
-Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
 `cx-tg` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 
@@ -125,7 +125,7 @@ Web session selection follows a path-first flow: choose a workspace directory, s
 cx-tg new --cwd <path> --search
 cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
 cx-tg new --cwd <path> --permission-mode read-only
-cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --import --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 

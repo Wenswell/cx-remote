@@ -93,6 +93,17 @@ type CodexResumeSession = {
   managedSessionId: string | null;
 };
 
+type CodexPreviewMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+};
+
+type CodexSessionPreview = CodexResumeSession & {
+  messageCount: number;
+  messages: CodexPreviewMessage[];
+};
+
 type CodexResumeSessionsResponse = {
   cwd: string;
   sessions: CodexResumeSession[];
@@ -185,6 +196,7 @@ const apiPath = {
   sessionsForCwd: (cwd: string) => `/api/sessions?cwd=${encodeURIComponent(cwd)}`,
   adoptSession: '/api/sessions/adopt',
   codexSessions: (cwd: string) => `/api/codex/sessions?cwd=${encodeURIComponent(cwd)}&limit=100`,
+  codexSessionPreview: (threadId: string) => `/api/codex/sessions/${encodeURIComponent(threadId)}/preview`,
   files: (root: string, path: string) => `/api/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
   session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
   approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
@@ -218,6 +230,8 @@ let eventSourceSessionId = '';
 let notificationEventSource: EventSource | null = null;
 let notificationEventCursor = 0;
 let pendingDeleteSessionId = '';
+let pendingAdoptSession: CodexResumeSession | null = null;
+let pendingAdoptPreview: CodexSessionPreview | null = null;
 let pathSessionsLoading = false;
 let pathSessionsRequestId = 0;
 const eventCursorBySession = new Map<string, number>();
@@ -498,7 +512,7 @@ function codexSessionButton(session: CodexResumeSession): ButtonElement {
   const button = createButton('', {
     className: 'session codex-session',
     size: 'small',
-    onClick: () => adoptCodexSession(session),
+    onClick: () => showAdoptPreview(session),
   });
   const line = document.createElement('span');
   line.className = 'session-line';
@@ -536,19 +550,68 @@ async function selectHubSession(session: Session): Promise<void> {
   closeSidebarOnMobile();
 }
 
-async function adoptCodexSession(codexSession: CodexResumeSession): Promise<void> {
-  const cwd = element<ValueElement>('cwd').value.trim();
+async function showAdoptPreview(codexSession: CodexResumeSession): Promise<void> {
+  const preview = await api<CodexSessionPreview>(apiPath.codexSessionPreview(codexSession.id));
+  if (preview.managedSessionId) throw new Error(`Codex thread is already managed by Hub session: ${preview.managedSessionId}`);
+  pendingAdoptSession = codexSession;
+  pendingAdoptPreview = preview;
+  renderAdoptPreview(preview);
+  await element<DialogElement>('adopt-dialog').show();
+}
+
+function renderAdoptPreview(preview: CodexSessionPreview): void {
+  element('adopt-title').textContent = preview.title;
+  element('adopt-meta').textContent = [
+    displayPath(preview.cwd),
+    `Updated ${formatDateTime(preview.updatedAt)}`,
+    shortId(preview.id),
+    `${preview.messageCount} messages`,
+  ].filter(Boolean).join(' · ');
+
+  const list = element('adopt-preview-messages');
+  list.innerHTML = '';
+  if (!preview.messages.length) {
+    list.appendChild(emptyState('No transcript messages'));
+    return;
+  }
+  for (const message of preview.messages) list.appendChild(previewMessageNode(message));
+}
+
+function previewMessageNode(message: CodexPreviewMessage): HTMLElement {
+  const div = document.createElement('div');
+  div.className = `preview-msg ${message.role}`;
+  const meta = document.createElement('div');
+  meta.className = 'preview-msg-meta';
+  meta.textContent = `${message.role} · ${formatDateTime(message.createdAt)}`;
+  const content = document.createElement('div');
+  content.className = 'preview-msg-content';
+  content.textContent = message.content;
+  div.append(meta, content);
+  return div;
+}
+
+function clearAdoptPreview(): void {
+  pendingAdoptSession = null;
+  pendingAdoptPreview = null;
+  element('adopt-preview-messages').innerHTML = '';
+}
+
+async function adoptPendingCodexSession(): Promise<void> {
+  if (!pendingAdoptSession || !pendingAdoptPreview) return;
   const session = await api<Session>(apiPath.adoptSession, {
     method: 'POST',
     body: JSON.stringify({
-      threadId: codexSession.id,
-      cwd,
-      title: codexSession.title,
+      threadId: pendingAdoptSession.id,
+      cwd: pendingAdoptPreview.cwd,
+      title: pendingAdoptPreview.title,
+      importTranscript: true,
       config: runtimeConfigFromControls('new'),
     }),
   });
   activeSessionId = session.id;
   localStorage.setItem('cx_tg_session', activeSessionId);
+  await element<DialogElement>('adopt-dialog').hide();
+  clearAdoptPreview();
   await loadAll();
   closeSidebarOnMobile();
 }
@@ -1118,6 +1181,12 @@ element<ToggleElement>('notify').addEventListener('sl-change', (event) => runAct
   await updateSessionNotifications((event.currentTarget as ToggleElement).checked);
 }));
 element('delete-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => element<DialogElement>('delete-dialog').hide()));
+element('adopt-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
+  await element<DialogElement>('adopt-dialog').hide();
+  clearAdoptPreview();
+}));
+element('adopt-confirm').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, adoptPendingCodexSession));
+element('adopt-dialog').addEventListener('sl-hide', () => clearAdoptPreview());
 element('runtime-cancel').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => element<DialogElement>('runtime-dialog').hide()));
 element('runtime-save').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, saveRuntimeConfig));
 element('delete-confirm').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {

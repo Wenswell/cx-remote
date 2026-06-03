@@ -13,6 +13,22 @@ export interface CodexResumeSession {
   threadSource: string;
 }
 
+export interface CodexTranscriptMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+}
+
+export interface CodexSessionTranscript {
+  session: CodexResumeSession;
+  messages: CodexTranscriptMessage[];
+}
+
+export interface CodexSessionPreview extends CodexResumeSession {
+  messageCount: number;
+  messages: CodexTranscriptMessage[];
+}
+
 export interface ListCodexResumeSessionsOptions {
   cwd: string;
   codexHome?: string;
@@ -30,6 +46,8 @@ const FIRST_LINE_CHUNK_SIZE = 64 * 1024;
 const MAX_FIRST_LINE_BYTES = 5 * 1024 * 1024;
 const MAX_TITLE_SCAN_BYTES = 5 * 1024 * 1024;
 const MAX_TITLE_SCAN_LINES = 200;
+const DEFAULT_PREVIEW_MESSAGE_LIMIT = 6;
+const MAX_PREVIEW_MESSAGE_CHARS = 1200;
 
 export function defaultCodexHome(): string {
   return resolve(process.env.CODEX_HOME || join(homedir(), '.codex'));
@@ -54,6 +72,51 @@ export function listCodexResumeSessions(options: ListCodexResumeSessionsOptions)
     .slice(0, limit);
 }
 
+export function readCodexSessionTranscript(options: { threadId: string; codexHome?: string }): CodexSessionTranscript | null {
+  const codexHome = resolve(options.codexHome || defaultCodexHome());
+  const index = readSessionIndex(join(codexHome, 'session_index.jsonl'));
+  const filePath = findSessionFilePath(join(codexHome, 'sessions'), options.threadId.trim());
+  if (!filePath) return null;
+  const session = readSessionMeta(filePath, index);
+  if (!session) return null;
+  return {
+    session,
+    messages: readTranscriptMessages(filePath),
+  };
+}
+
+export function readCodexSessionPreview(options: {
+  threadId: string;
+  codexHome?: string;
+  messageLimit?: number;
+}): CodexSessionPreview | null {
+  const transcript = readCodexSessionTranscript(options);
+  if (!transcript) return null;
+  const limit = Math.max(Math.trunc(options.messageLimit ?? DEFAULT_PREVIEW_MESSAGE_LIMIT), 0);
+  return {
+    ...transcript.session,
+    messageCount: transcript.messages.length,
+    messages: transcript.messages.slice(0, limit).map((message) => ({
+      ...message,
+      content: truncatePreviewContent(message.content),
+    })),
+  };
+}
+
+export function readCodexTranscript(options: { threadId: string; codexHome?: string }): CodexTranscriptMessage[] {
+  return readCodexSessionTranscript(options)?.messages ?? [];
+}
+
+function readTranscriptMessages(filePath: string): CodexTranscriptMessage[] {
+  const messages: CodexTranscriptMessage[] = [];
+  readJsonlLines(filePath, (line) => {
+    const message = transcriptMessageFromLine(line);
+    if (!message) return;
+    messages.push(message);
+  });
+  return messages;
+}
+
 function readSessionIndex(filePath: string): Map<string, SessionIndexEntry> {
   const index = new Map<string, SessionIndexEntry>();
   if (!existsSync(filePath)) return index;
@@ -72,6 +135,19 @@ function readSessionIndex(filePath: string): Map<string, SessionIndexEntry> {
   return index;
 }
 
+function findSessionFilePath(sessionsDir: string, threadId: string): string | null {
+  if (!existsSync(sessionsDir)) return null;
+  for (const filePath of listJsonlFiles(sessionsDir)) {
+    const line = readFirstLine(filePath);
+    if (!line) continue;
+    const record = parseJsonObject(line);
+    if (!record || record.type !== 'session_meta') continue;
+    const payload = objectValue(record.payload);
+    if (stringValue(payload?.id) === threadId) return filePath;
+  }
+  return null;
+}
+
 function* listJsonlFiles(root: string): Generator<string> {
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const filePath = join(root, entry.name);
@@ -80,6 +156,37 @@ function* listJsonlFiles(root: string): Generator<string> {
       continue;
     }
     if (entry.isFile() && entry.name.endsWith('.jsonl')) yield filePath;
+  }
+}
+
+function readJsonlLines(filePath: string, onLine: (line: string) => void): void {
+  let fd: number | null = null;
+  try {
+    fd = openSync(filePath, 'r');
+    const buffer = Buffer.alloc(FIRST_LINE_CHUNK_SIZE);
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+
+    for (;;) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      pending += decoder.write(buffer.subarray(0, bytesRead));
+
+      for (;;) {
+        const newlineIndex = pending.indexOf('\n');
+        if (newlineIndex < 0) break;
+        const line = pending.slice(0, newlineIndex);
+        pending = pending.slice(newlineIndex + 1);
+        if (line.trim()) onLine(line);
+      }
+    }
+
+    pending += decoder.end();
+    if (pending.trim()) onLine(pending);
+  } catch {
+    return;
+  } finally {
+    if (fd !== null) closeSync(fd);
   }
 }
 
@@ -106,6 +213,22 @@ function readSessionMeta(filePath: string, index: Map<string, SessionIndexEntry>
     updatedAt,
     originator: stringValue(payload.originator) || '',
     threadSource: stringValue(payload.thread_source) || '',
+  };
+}
+
+function transcriptMessageFromLine(line: string): CodexTranscriptMessage | null {
+  const record = parseJsonObject(line);
+  if (!record || record.type !== 'response_item') return null;
+  const payload = objectValue(record.payload);
+  if (!payload || payload.type !== 'message') return null;
+  const role = stringValue(payload.role);
+  if (role !== 'user' && role !== 'assistant') return null;
+  const content = normalizeMessageContent(responseItemText(payload.content));
+  if (!content) return null;
+  return {
+    role,
+    content,
+    createdAt: timestampMs(stringValue(record.timestamp)) || Date.now(),
   };
 }
 
@@ -218,8 +341,28 @@ function responseItemText(value: unknown): string {
 
 function normalizeTitle(value: string): string {
   const title = value.replace(/\s+/g, ' ').trim();
-  if (!title || title.startsWith('# AGENTS.md instructions') || title.includes('<INSTRUCTIONS>')) return '';
+  if (!title || isInjectedPromptText(title)) return '';
   return title;
+}
+
+function normalizeMessageContent(value: string): string {
+  const content = value.trim();
+  return content && !isInjectedPromptText(content) ? content : '';
+}
+
+function isInjectedPromptText(value: string): boolean {
+  return value.startsWith('# AGENTS.md instructions') || value.includes('<INSTRUCTIONS>');
+}
+
+function timestampMs(value: string): number {
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : 0;
+}
+
+function truncatePreviewContent(value: string): string {
+  return value.length > MAX_PREVIEW_MESSAGE_CHARS
+    ? `${value.slice(0, MAX_PREVIEW_MESSAGE_CHARS - 1)}...`
+    : value;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {

@@ -1,5 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
@@ -8,6 +8,7 @@ import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../stor
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
 import { CodexRuntime } from '../agents/codex/runtime.js';
+import { readCodexSessionTranscript } from '../agents/codex/sessions.js';
 import { EventBus } from './event-bus.js';
 import { PermissionService } from './permissions.js';
 
@@ -67,13 +68,24 @@ export class ControlHub {
     title?: string;
     bind?: { controlType: ControlType; externalId: string };
     config?: CodexSessionConfigPatch;
+    importTranscript?: boolean;
+    codexHome?: string;
   }): Session {
     const threadId = input.threadId.trim();
     if (!threadId) throw new Error('Codex thread id is required');
     const existing = this.store.getSessionByCodexThreadId(threadId);
     if (existing) throw new Error(`Codex thread is already managed by Hub session: ${existing.id}`);
+    const transcript = input.importTranscript
+      ? readCodexSessionTranscript({ threadId, codexHome: input.codexHome })
+      : null;
+    if (input.importTranscript && !transcript) throw new Error(`Codex thread not found: ${threadId}`);
+    const cwd = resolveWorkspacePath(this.config, input.cwd);
+    if (transcript && resolve(transcript.session.cwd) !== cwd) {
+      throw new Error(`Codex thread cwd does not match selected directory: ${transcript.session.cwd}`);
+    }
     const session = this.createSessionRecord({ ...input, codexThreadId: threadId });
-    logger.info('codex thread adopted', { sessionKey: session.id, threadId, cwd: session.cwd });
+    const importedMessages = transcript ? this.importTranscript(session.id, threadId, transcript.messages) : 0;
+    logger.info('codex thread adopted', { sessionKey: session.id, threadId, cwd: session.cwd, importedMessages });
     return session;
   }
 
@@ -511,11 +523,25 @@ export class ControlHub {
     }
   }
 
-  private addMessage(input: Omit<Message, 'id' | 'createdAt'>): Message {
+  private importTranscript(sessionId: string, threadId: string, messages: Array<{ role: 'user' | 'assistant'; content: string; createdAt: number }>): number {
+    for (const message of messages) {
+      this.addMessage({
+        sessionId,
+        role: message.role,
+        kind: 'text',
+        content: message.content,
+        metadata: { source: 'codex-transcript', threadId },
+        createdAt: message.createdAt,
+      });
+    }
+    return messages.length;
+  }
+
+  private addMessage(input: Omit<Message, 'id' | 'createdAt'> & { createdAt?: number }): Message {
     const message = this.store.createMessage({
       ...input,
       id: randomUUID(),
-      createdAt: Date.now(),
+      createdAt: input.createdAt ?? Date.now(),
     });
     this.events.publish({ type: 'message.created', sessionId: message.sessionId, payload: { message } });
     const session = this.store.getSession(message.sessionId);

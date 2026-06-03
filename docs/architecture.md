@@ -106,6 +106,7 @@ POST   /api/auth
 GET    /api/workspaces
 GET    /api/files
 GET    /api/codex/sessions
+GET    /api/codex/sessions/:threadId/preview
 GET    /api/sessions
 POST   /api/sessions
 POST   /api/sessions/adopt
@@ -131,9 +132,10 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
 `GET /api/sessions?cwd=<path>` lists Hub-managed sessions for one workspace directory, ordered by Hub session `updatedAt`. Without `cwd`, it lists all Hub-managed sessions for recent/history views.
 `GET /api/codex/sessions?cwd=<path>` lists Codex resume sessions recorded for one workspace directory. Results include thread title, timestamps, origin, and the Hub session id when that Codex session is already managed.
+`GET /api/codex/sessions/:threadId/preview` returns a small transcript preview for one Codex session, including message count, sampled user/assistant messages, and the Hub session id when already managed.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
 `POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
-`POST /api/sessions/adopt` accepts `threadId`, `cwd`, and optional `title`, then creates a Hub-managed session mapped to that native Codex thread. `codexThreadId` is unique in the Hub store.
+`POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` is unique in the Hub store.
 `PATCH /api/sessions/:id/config` updates an idle Hub session runtime config and restarts its idle app-server runtime on the next prompt. Running or queued sessions reject config updates.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
@@ -176,18 +178,19 @@ Web adoption follows Codex resume cwd filtering inside the selected directory:
 ```text
 GET /api/sessions?cwd=<path>
 GET /api/codex/sessions?cwd=<path>
+GET /api/codex/sessions/:threadId/preview
 pick Codex session
-POST /api/sessions/adopt
+POST /api/sessions/adopt { threadId, cwd, importTranscript: true }
 ```
 
 CLI/API adoption accepts an explicit Codex thread id:
 
 ```text
-cx-tg adopt --thread <codex-thread-id> --cwd <path>
-POST /api/sessions/adopt
+cx-tg adopt --thread <codex-thread-id> --cwd <path> --import
+POST /api/sessions/adopt { threadId, cwd, importTranscript? }
 ```
 
-Adoption stores the existing Codex thread id on a new Hub session. The next prompt resumes that thread with `thread/resume` before `turn/start`. Hub history starts at adoption; previous native Codex transcript remains in Codex storage.
+Adoption stores the existing Codex thread id on a new Hub session. The next prompt resumes that thread with `thread/resume` before `turn/start`. When transcript import is requested, Hub copies the native Codex user/assistant messages into Hub messages during adoption.
 
 Deleting a Hub session removes Hub messages, queue, approvals, control state, and events. It leaves the native Codex thread in Codex storage.
 

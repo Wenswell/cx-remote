@@ -243,6 +243,84 @@ test('Codex sessions API lists resume sessions for a workspace directory', async
   }
 });
 
+test('Codex session preview API returns transcript sample', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-preview', process.cwd(), 'Preview thread', '2026-06-03T10:00:00.000Z', [
+      ['user', 'preview prompt', '2026-06-03T10:01:00.000Z'],
+      ['assistant', 'preview answer', '2026-06-03T10:02:00.000Z'],
+    ]);
+
+    const response = await context.app.request(
+      '/api/codex/sessions/thread-preview/preview',
+      { headers: authHeaders(context.config) },
+    );
+    const body = await json<{
+      id: string;
+      title: string;
+      messageCount: number;
+      messages: Array<{ role: string; content: string }>;
+      managedSessionId: string | null;
+    }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.id, 'thread-preview');
+    assert.equal(body.title, 'Preview thread');
+    assert.equal(body.messageCount, 2);
+    assert.deepEqual(body.messages.map((message) => [message.role, message.content]), [
+      ['user', 'preview prompt'],
+      ['assistant', 'preview answer'],
+    ]);
+    assert.equal(body.managedSessionId, null);
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
+test('session adopt API imports Codex transcript when requested', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-import', process.cwd(), 'Imported thread', '2026-06-03T10:00:00.000Z', [
+      ['user', 'historical prompt', '2026-06-03T10:01:00.000Z'],
+      ['assistant', 'historical answer', '2026-06-03T10:02:00.000Z'],
+    ]);
+
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        threadId: 'thread-import',
+        cwd: process.cwd(),
+        title: 'Imported thread',
+        importTranscript: true,
+      }),
+    });
+    const session = await json<{ id: string; codexThreadId: string | null }>(response);
+    const detail = await json<{
+      messages: Array<{ role: string; kind: string; content: string; metadata: { source?: string }; createdAt: number }>;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(response.status, 201);
+    assert.equal(session.codexThreadId, 'thread-import');
+    assert.deepEqual(detail.messages.map((message) => [message.role, message.kind, message.content, message.metadata.source]), [
+      ['user', 'text', 'historical prompt', 'codex-transcript'],
+      ['assistant', 'text', 'historical answer', 'codex-transcript'],
+    ]);
+    assert.equal(detail.messages[0]?.createdAt, Date.parse('2026-06-03T10:01:00.000Z'));
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
 test('session create API stores runtime config overrides', async () => {
   const context = createTestApp();
 
@@ -511,7 +589,14 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
   }
 });
 
-function writeCodexSession(codexHome: string, id: string, cwd: string, title: string, timestamp: string): void {
+function writeCodexSession(
+  codexHome: string,
+  id: string,
+  cwd: string,
+  title: string,
+  timestamp: string,
+  messages: Array<['user' | 'assistant', string, string]> = [],
+): void {
   mkdirSync(join(codexHome, 'sessions', '2026', '06', '03'), { recursive: true });
   writeFileSync(join(codexHome, 'session_index.jsonl'), [
     JSON.stringify({ id, thread_name: title, updated_at: timestamp }),
@@ -529,6 +614,16 @@ function writeCodexSession(codexHome: string, id: string, cwd: string, title: st
         thread_source: 'local',
       },
     }),
+    JSON.stringify({ timestamp, type: 'event_msg', payload: { type: 'user_message', message: 'event message title' } }),
+    ...messages.map(([role, content, createdAt]) => JSON.stringify({
+      timestamp: createdAt,
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role,
+        content: [{ type: role === 'user' ? 'input_text' : 'output_text', text: content }],
+      },
+    })),
     '',
   ].join('\n'));
 }

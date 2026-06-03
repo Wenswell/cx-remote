@@ -92,9 +92,15 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     case 'adopt': {
       const threadId = valueAfter(argv, '--thread') ?? positionalValue(argv);
       const cwd = valueAfter(argv, '--cwd');
-      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>] [runtime flags]');
+      if (!threadId || !cwd) throw new Error('Usage: cx-tg adopt --thread <codex-thread-id> --cwd <path> [--title <title>] [--import] [runtime flags]');
       const title = valueAfter(argv, '--title');
-      console.log(JSON.stringify(await client.post('/api/sessions/adopt', { threadId, cwd, title, config: sessionConfigFromArgs(argv) }), null, 2));
+      console.log(JSON.stringify(await client.post('/api/sessions/adopt', {
+        threadId,
+        cwd,
+        title,
+        importTranscript: hasFlag(argv, '--import'),
+        config: sessionConfigFromArgs(argv),
+      }), null, 2));
       return;
     }
     case 'send': {
@@ -520,6 +526,7 @@ function printHelp(): void {
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
     '  cx-tg adopt --thread <id> --cwd <path> Adopt Codex thread',
+    '    [--import]',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
     '  cx-tg send <session-id> <text>    Send message',

@@ -8,7 +8,7 @@ import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { resolveCodexRuntimeDefaults } from '../agents/codex/defaults.js';
-import { listCodexResumeSessions } from '../agents/codex/sessions.js';
+import { listCodexResumeSessions, readCodexSessionPreview } from '../agents/codex/sessions.js';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, resolveWorkspacePath, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
@@ -32,6 +32,7 @@ const adoptSessionSchema = z.object({
   cwd: z.string().min(1),
   title: z.string().optional(),
   config: sessionConfigSchema().optional(),
+  importTranscript: z.boolean().optional().default(false),
 });
 
 const controlTypeSchema = z.enum(['web', 'telegram', 'cli']);
@@ -242,6 +243,20 @@ export class HubServer {
       return c.json({ cwd, sessions });
     });
 
+    app.get('/api/codex/sessions/:threadId/preview', (c) => {
+      const threadId = z.string().min(1).parse(c.req.param('threadId'));
+      const preview = readCodexSessionPreview({
+        threadId,
+        codexHome: this.options.codexHome,
+      });
+      if (!preview) throw new Error(`Codex thread not found: ${threadId}`);
+      const managed = this.hub.listSessions().find((session) => session.codexThreadId === threadId);
+      return c.json({
+        ...preview,
+        managedSessionId: managed?.id ?? null,
+      });
+    });
+
     app.get('/api/settings', (c) => c.json({
       settings: maskSettings(this.config),
       fields: listSettingFields().map((field) => ({
@@ -283,6 +298,8 @@ export class HubServer {
         cwd: input.cwd,
         title: input.title,
         config: input.config,
+        importTranscript: input.importTranscript,
+        codexHome: this.options.codexHome,
       });
       return c.json(session, 201);
     });

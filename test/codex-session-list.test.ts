@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { listCodexResumeSessions } from '../src/agents/codex/sessions.js';
+import { listCodexResumeSessions, readCodexSessionPreview, readCodexTranscript } from '../src/agents/codex/sessions.js';
 
 test('Codex resume sessions are filtered by cwd and sorted by updated time', () => {
   const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
@@ -63,7 +63,58 @@ test('Codex resume session list uses transcript user message when the index has 
   }
 });
 
-function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp: string, message = 'ignored'): void {
+test('Codex transcript import reads canonical response item messages only', () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const cwd = process.cwd();
+
+  try {
+    writeCodexSession(codexHome, 'thread-transcript', cwd, '2026-06-03T09:00:00.000Z', 'event title', [
+      JSON.stringify({ timestamp: '2026-06-03T09:01:00.000Z', type: 'event_msg', payload: { type: 'user_message', message: 'event user duplicate' } }),
+      JSON.stringify({
+        timestamp: '2026-06-03T09:02:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'actual user prompt' }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-06-03T09:03:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [{ type: 'output_text', text: 'actual assistant answer' }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-06-03T09:04:00.000Z',
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'developer',
+          content: [{ type: 'input_text', text: 'developer instructions' }],
+        },
+      }),
+    ]);
+
+    const messages = readCodexTranscript({ threadId: 'thread-transcript', codexHome });
+    assert.deepEqual(messages.map((message) => [message.role, message.content]), [
+      ['user', 'actual user prompt'],
+      ['assistant', 'actual assistant answer'],
+    ]);
+    assert.equal(messages[0]?.createdAt, Date.parse('2026-06-03T09:02:00.000Z'));
+
+    const preview = readCodexSessionPreview({ threadId: 'thread-transcript', codexHome, messageLimit: 1 });
+    assert.equal(preview?.messageCount, 2);
+    assert.deepEqual(preview?.messages.map((message) => message.content), ['actual user prompt']);
+  } finally {
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
+function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp: string, message = 'ignored', extraLines: string[] = []): void {
   const dir = join(codexHome, 'sessions', '2026', '06', '03');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `rollout-${id}.jsonl`), [
@@ -87,6 +138,7 @@ function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp
       },
     }),
     JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message } }),
+    ...extraLines,
     '',
   ].join('\n'));
 }
