@@ -1,3 +1,5 @@
+import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
+
 export type SettingFieldType = 'string' | 'number' | 'boolean' | 'string[]' | 'enum';
 
 export interface SettingField {
@@ -19,8 +21,8 @@ export const SETTING_FIELDS: SettingField[] = [
   { key: 'server.accessToken', path: ['server', 'accessToken'], type: 'string', env: 'CX_TG_ACCESS_TOKEN', secret: true, restartRequired: true, description: 'API and Web bearer token' },
   { key: 'workspace.roots', path: ['workspace', 'roots'], type: 'string[]', restartRequired: true, description: 'Allowed workspace roots' },
   { key: 'codex.bin', path: ['agents', 'codex', 'bin'], type: 'string', env: 'CODEX_BIN', restartRequired: true, description: 'Codex executable' },
-  { key: 'codex.model', path: ['agents', 'codex', 'model'], type: 'string', env: 'CODEX_MODEL', description: 'Codex model override' },
-  { key: 'codex.reasoningEffort', path: ['agents', 'codex', 'reasoningEffort'], type: 'string', env: 'CODEX_REASONING_EFFORT', description: 'Codex reasoning effort' },
+  { key: 'codex.model', path: ['agents', 'codex', 'model'], type: 'enum', env: 'CODEX_MODEL', choices: ['auto', ...CODEX_MODEL_OPTIONS], description: 'Codex model' },
+  { key: 'codex.reasoningEffort', path: ['agents', 'codex', 'reasoningEffort'], type: 'enum', env: 'CODEX_REASONING_EFFORT', choices: ['default', ...CODEX_REASONING_EFFORT_OPTIONS], description: 'Codex reasoning effort' },
   { key: 'codex.permissionMode', path: ['agents', 'codex', 'permissionMode'], type: 'enum', env: 'CODEX_PERMISSION_MODE', choices: ['default', 'read-only', 'safe-yolo', 'yolo'], description: 'Codex permission mode' },
   { key: 'codex.search', path: ['agents', 'codex', 'search'], type: 'boolean', env: 'CODEX_SEARCH', description: 'Codex web search flag' },
   { key: 'web.enabled', path: ['controls', 'web', 'enabled'], type: 'boolean', readOnly: true, description: 'Web control availability' },

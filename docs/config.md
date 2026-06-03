@@ -65,8 +65,8 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
 | `server.accessToken` | string | `CX_TG_ACCESS_TOKEN` | yes |
 | `workspace.roots` | string[] |  | yes |
 | `codex.bin` | string | `CODEX_BIN` | yes |
-| `codex.model` | string | `CODEX_MODEL` | no |
-| `codex.reasoningEffort` | string | `CODEX_REASONING_EFFORT` | no |
+| `codex.model` | enum | `CODEX_MODEL` | no |
+| `codex.reasoningEffort` | enum | `CODEX_REASONING_EFFORT` | no |
 | `codex.permissionMode` | enum | `CODEX_PERMISSION_MODE` | no |
 | `codex.search` | boolean | `CODEX_SEARCH` | no |
 | `telegram.enabled` | boolean | `TG_ENABLED` | yes |
@@ -102,10 +102,10 @@ Local checks run without a live Hub. Hub checks use `/api/health` and `/api/stat
     "default": "codex",
     "codex": {
       "bin": "codex",
-      "model": "",
-      "reasoningEffort": "",
+      "model": "auto",
+      "reasoningEffort": "default",
       "permissionMode": "default",
-      "search": false
+      "search": true
     }
   },
   "controls": {
@@ -150,7 +150,7 @@ PATCH /api/settings
 ```json
 {
   "key": "codex.model",
-  "value": "gpt-5.1-codex"
+  "value": "gpt-5.5"
 }
 ```
 
@@ -164,8 +164,11 @@ Use per-session flags for one session:
 
 ```bash
 cx-tg new --cwd <path> --search
+cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
 cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
+
+Search is enabled by default; `--no-search` disables it for one session. Model choices are `auto`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, and `gpt-5.2`. Reasoning effort choices are `default`, `low`, `medium`, `high`, and `xhigh`.
 
 Permission modes are `default`, `read-only`, `safe-yolo`, and `yolo`. The dangerous Codex flag is accepted as a `yolo` shortcut.

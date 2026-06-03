@@ -176,8 +176,17 @@ Hub sessions store a Codex runtime config snapshot. `codex.*` settings provide d
 Session runtime fields:
 
 ```text
+--model gpt-5.5
+  -> config.model = gpt-5.5
+
+--reasoning-effort high
+  -> config.reasoningEffort = high
+
 --search
   -> config.search = true
+
+--no-search
+  -> config.search = false
 
 --permission-mode yolo
   -> config.permissionMode = yolo
@@ -186,7 +195,7 @@ Session runtime fields:
   -> config.permissionMode = yolo
 ```
 
-`CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends mode-derived `approvalPolicy` and v2 `permissions` through `thread/start`, `thread/resume`, and `turn/start`.
+`model=auto` and `reasoningEffort=default` are stored as global defaults only; session runtime omits those app-server parameters until a concrete value is selected. Search is enabled by default. `CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends mode-derived `approvalPolicy` and v2 `permissions` through `thread/start`, `thread/resume`, and `turn/start`.
 
 Permission mode mapping:
 
@@ -196,6 +205,15 @@ Permission mode mapping:
 | `read-only` | `never` | `:read-only` |
 | `safe-yolo` | `on-failure` | `:workspace` |
 | `yolo` | `never` | `:danger-full-access` |
+
+Logical behavior:
+
+| Permission mode | Behavior |
+|---|---|
+| `default` | Workspace access with model-requested user approvals for higher-risk actions. |
+| `read-only` | Read-only access; write attempts are rejected. |
+| `safe-yolo` | Workspace access; failed sandboxed commands can request escalation. |
+| `yolo` | Full filesystem/process access; approvals are bypassed. |
 
 ## First Version Boundaries
 

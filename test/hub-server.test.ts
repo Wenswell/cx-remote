@@ -200,18 +200,22 @@ test('session create API stores runtime config overrides', async () => {
         config: {
           search: true,
           permissionMode: 'read-only',
+          model: 'gpt-5.5',
+          reasoningEffort: 'high',
         },
       }),
     });
     const session = await json<{
       title: string;
-      config: { search: boolean; permissionMode: string };
+      config: { search: boolean; permissionMode: string; model: string; reasoningEffort: string };
     }>(response);
 
     assert.equal(response.status, 201);
     assert.equal(session.title, 'Search session');
     assert.equal(session.config.search, true);
     assert.equal(session.config.permissionMode, 'read-only');
+    assert.equal(session.config.model, 'gpt-5.5');
+    assert.equal(session.config.reasoningEffort, 'high');
   } finally {
     await closeTestHub(context);
   }
@@ -229,16 +233,41 @@ test('session config API updates idle session runtime flags', async () => {
         config: {
           search: true,
           permissionMode: 'yolo',
+          model: 'auto',
+          reasoningEffort: 'default',
         },
       }),
     });
     const updated = await json<{
-      config: { search: boolean; permissionMode: string };
+      config: { search: boolean; permissionMode: string; model?: string; reasoningEffort?: string };
     }>(response);
 
     assert.equal(response.status, 200);
     assert.equal(updated.config.search, true);
     assert.equal(updated.config.permissionMode, 'yolo');
+    assert.equal(updated.config.model, undefined);
+    assert.equal(updated.config.reasoningEffort, undefined);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session config API rejects invalid model options', async () => {
+  const context = createTestApp();
+
+  try {
+    const session = createSession(context.store);
+    const response = await context.app.request(`/api/sessions/${encodeURIComponent(session.id)}/config`, {
+      method: 'PATCH',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        config: {
+          model: 'custom-model',
+        },
+      }),
+    });
+
+    assert.equal(response.status, 400);
   } finally {
     await closeTestHub(context);
   }
@@ -371,7 +400,7 @@ test('status exposes browser bootstrap metadata', async () => {
     assert.equal(status.homePath, homedir());
     assert.equal(status.eventCursor, event.id);
     assert.equal(status.codexDefaults.permissionMode, 'default');
-    assert.equal(status.codexDefaults.search, false);
+    assert.equal(status.codexDefaults.search, true);
   } finally {
     await closeTestHub(context);
   }

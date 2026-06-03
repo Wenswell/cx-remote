@@ -100,8 +100,8 @@ cx-tg status
 cx-tg sessions
 cx-tg session <session-id>
 cx-tg messages <session-id>
-cx-tg new --cwd /home/ilove/Documents/repos/cx-tg --search
-cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg --search
+cx-tg new --cwd /home/ilove/Documents/repos/cx-tg
+cx-tg adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-tg
 cx-tg session-config <session-id> --search --permission-mode yolo
 cx-tg send <session-id> "check git status"
 cx-tg attach <session-id>
@@ -122,12 +122,13 @@ cx-tg doctor
 
 ```bash
 cx-tg new --cwd <path> --search
+cx-tg new --cwd <path> --model gpt-5.5 --reasoning-effort high
 cx-tg new --cwd <path> --permission-mode read-only
 cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 
-`--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` only when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
+Search is enabled by default. Use `--no-search` to disable it for one session. `model=auto` and `reasoningEffort=default` leave those choices to Codex. `--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
 
 ## Telegram
 
@@ -181,7 +182,7 @@ cx-tg config path
 cx-tg config show
 cx-tg config show --resolved
 cx-tg config get codex.model
-cx-tg config set codex.model gpt-5.1-codex
+cx-tg config set codex.model gpt-5.5
 cx-tg doctor
 ```
 

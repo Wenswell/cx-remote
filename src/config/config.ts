@@ -3,10 +3,12 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
-import type { CodexPermissionMode } from '../domain/types.js';
+import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS, type CodexPermissionMode } from '../domain/types.js';
 import { SETTING_FIELDS, findSettingField, type SettingField } from './fields.js';
 
 const permissionModeSchema = z.enum(['default', 'read-only', 'safe-yolo', 'yolo']);
+const codexModelSchema = z.enum(['auto', ...CODEX_MODEL_OPTIONS]);
+const codexReasoningEffortSchema = z.enum(['default', ...CODEX_REASONING_EFFORT_OPTIONS]);
 const logLevelSchema = z.enum(['debug', 'info', 'warn', 'error']);
 
 export const settingsSchema = z.object({
@@ -23,10 +25,10 @@ export const settingsSchema = z.object({
     default: z.literal('codex').default('codex'),
     codex: z.object({
       bin: z.string().min(1).default('codex'),
-      model: z.string().default(''),
-      reasoningEffort: z.string().default(''),
+      model: codexModelSchema.default('auto'),
+      reasoningEffort: codexReasoningEffortSchema.default('default'),
       permissionMode: permissionModeSchema.default('default'),
-      search: z.boolean().default(false),
+      search: z.boolean().default(true),
     }),
   }),
   controls: z.object({
@@ -240,10 +242,10 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
       default: 'codex',
       codex: {
         bin: 'codex',
-        model: '',
-        reasoningEffort: '',
+        model: 'auto',
+        reasoningEffort: 'default',
         permissionMode: 'default',
-        search: false,
+        search: true,
       },
     },
     controls: {

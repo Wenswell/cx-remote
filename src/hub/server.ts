@@ -9,12 +9,15 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
+import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 import type { PromptJobStatus } from '../domain/types.js';
 import { ControlHub } from '../runtime/control-hub.js';
 import { encodeSseFrame } from '../runtime/sse.js';
 import { logger } from '../logger.js';
 
 const permissionModeSchema = z.enum(['default', 'read-only', 'safe-yolo', 'yolo']);
+const codexModelSchema = z.enum(['auto', ...CODEX_MODEL_OPTIONS]);
+const codexReasoningEffortSchema = z.enum(['default', ...CODEX_REASONING_EFFORT_OPTIONS]);
 
 const createSessionSchema = z.object({
   cwd: z.string().min(1),
@@ -70,8 +73,8 @@ const WEB_AUTH_COOKIE = 'cx_tg_auth';
 
 function sessionConfigSchema() {
   return z.object({
-    model: z.string().optional(),
-    reasoningEffort: z.string().optional(),
+    model: codexModelSchema.optional(),
+    reasoningEffort: codexReasoningEffortSchema.optional(),
     permissionMode: permissionModeSchema.optional(),
     search: z.boolean().optional(),
   });

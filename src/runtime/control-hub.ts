@@ -123,8 +123,8 @@ export class ControlHub {
 
   defaultSessionConfig(): CodexSessionConfig {
     return normalizeSessionConfig({
-      model: emptyToUndefined(this.config.agents.codex.model),
-      reasoningEffort: emptyToUndefined(this.config.agents.codex.reasoningEffort),
+      model: runtimeOverride(this.config.agents.codex.model),
+      reasoningEffort: runtimeOverride(this.config.agents.codex.reasoningEffort),
       permissionMode: this.config.agents.codex.permissionMode,
       search: this.config.agents.codex.search,
     });
@@ -614,16 +614,17 @@ export class ControlHub {
   }
 }
 
-function emptyToUndefined(value: string | undefined): string | undefined {
-  return value && value.length > 0 ? value : undefined;
+function runtimeOverride(value: string | undefined): string | undefined {
+  if (!value || value === 'auto' || value === 'default') return undefined;
+  return value;
 }
 
 function normalizeConfigPatch(patch: CodexSessionConfigPatch | undefined): CodexSessionConfigPatch {
   if (!patch) return {};
   return {
     ...patch,
-    model: emptyToUndefined(patch.model),
-    reasoningEffort: emptyToUndefined(patch.reasoningEffort),
+    model: runtimeOverride(patch.model),
+    reasoningEffort: runtimeOverride(patch.reasoningEffort),
   };
 }
 

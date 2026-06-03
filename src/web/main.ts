@@ -853,8 +853,8 @@ function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: Session
   element<ConfigValueElement>(`${prefix}-permission-mode`).value = config.permissionMode || 'default';
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
   const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
-  if (model) model.value = config.model || '';
-  if (reasoningEffort) reasoningEffort.value = config.reasoningEffort || '';
+  if (model) model.value = config.model || 'auto';
+  if (reasoningEffort) reasoningEffort.value = config.reasoningEffort || 'default';
 }
 
 function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): SessionConfig {
@@ -864,8 +864,8 @@ function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): Session
   };
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
   const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
-  if (model) config.model = model.value.trim();
-  if (reasoningEffort) config.reasoningEffort = reasoningEffort.value.trim();
+  if (model && model.value !== 'auto') config.model = model.value;
+  if (reasoningEffort && reasoningEffort.value !== 'default') config.reasoningEffort = reasoningEffort.value;
   return config;
 }
 

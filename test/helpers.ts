@@ -81,7 +81,7 @@ export function createSession(
     controlUpdatedAt: null,
     config: {
       permissionMode: 'default',
-      search: false,
+      search: true,
     },
     createdAt: now,
     updatedAt: now,
@@ -107,10 +107,10 @@ export function createConfig(dbPath: string): AppConfig {
       default: 'codex',
       codex: {
         bin: 'codex',
-        model: '',
-        reasoningEffort: '',
+        model: 'auto',
+        reasoningEffort: 'default',
         permissionMode: 'default',
-        search: false,
+        search: true,
       },
     },
     controls: {

@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { defaultConfigHome, expandHome, getSettingsPath, maskSecret, readSettings, writeSettings, type Settings } from '../config/config.js';
+import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 
 export async function runSetup(): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -26,8 +27,8 @@ export async function runSetup(): Promise<void> {
     const telegramAllowedChats = telegramEnabled ? splitList(await ask(rl, 'Telegram allowed chats', current.controls.telegram.allowedChats.join(','))) : current.controls.telegram.allowedChats;
     const requireMention = telegramEnabled ? await yesNo(rl, 'Require mention in groups', current.controls.telegram.requireMention) : current.controls.telegram.requireMention;
     const codexBin = await ask(rl, 'Codex bin', current.agents.codex.bin || 'codex');
-    const codexModel = await ask(rl, 'Codex model', current.agents.codex.model);
-    const reasoningEffort = await ask(rl, 'Codex reasoning effort', current.agents.codex.reasoningEffort);
+    const codexModel = await askChoice(rl, 'Codex model', ['auto', ...CODEX_MODEL_OPTIONS], current.agents.codex.model);
+    const reasoningEffort = await askChoice(rl, 'Codex reasoning effort', ['default', ...CODEX_REASONING_EFFORT_OPTIONS], current.agents.codex.reasoningEffort);
     const permissionMode = await ask(rl, 'Permission mode', current.agents.codex.permissionMode);
     const search = await yesNo(rl, 'Enable Codex search', current.agents.codex.search);
     const autoApproveReadonly = await yesNo(rl, 'Auto approve read-only commands', current.approvals.autoApproveReadonly);
@@ -109,6 +110,17 @@ async function askSecret(rl: ReturnType<typeof createInterface>, label: string, 
   const suffix = current ? ` [${maskSecret(current)}; blank keeps current]` : '';
   const answer = await rl.question(`${label}${suffix}: `);
   return answer.trim() || current;
+}
+
+async function askChoice<const TChoice extends string>(
+  rl: ReturnType<typeof createInterface>,
+  label: string,
+  choices: readonly TChoice[],
+  current: TChoice,
+): Promise<TChoice> {
+  const value = await ask(rl, `${label} (${choices.join(', ')})`, current);
+  if (choices.includes(value as TChoice)) return value as TChoice;
+  throw new Error(`${label} must be one of: ${choices.join(', ')}`);
 }
 
 async function yesNo(rl: ReturnType<typeof createInterface>, label: string, current: boolean): Promise<boolean> {
