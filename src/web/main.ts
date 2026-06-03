@@ -34,6 +34,8 @@ type Session = {
   currentTurnId: string | null;
   lastError: string | null;
   config?: SessionConfig;
+  createdAt: number;
+  updatedAt: number;
 };
 
 type Message = {
@@ -180,6 +182,7 @@ const apiPath = {
   status: '/api/status',
   workspaces: '/api/workspaces',
   sessions: '/api/sessions',
+  sessionsForCwd: (cwd: string) => `/api/sessions?cwd=${encodeURIComponent(cwd)}`,
   adoptSession: '/api/sessions/adopt',
   codexSessions: (cwd: string) => `/api/codex/sessions?cwd=${encodeURIComponent(cwd)}&limit=100`,
   files: (root: string, path: string) => `/api/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
@@ -197,6 +200,7 @@ const apiPath = {
 
 let activeSessionId = localStorage.getItem('cx_tg_session') || '';
 let sessions: Session[] = [];
+let pathSessions: Session[] = [];
 let adoptSessions: CodexResumeSession[] = [];
 let messages: Message[] = [];
 let pendingApprovals: Approval[] = [];
@@ -214,6 +218,8 @@ let eventSourceSessionId = '';
 let notificationEventSource: EventSource | null = null;
 let notificationEventCursor = 0;
 let pendingDeleteSessionId = '';
+let pathSessionsLoading = false;
+let pathSessionsRequestId = 0;
 const eventCursorBySession = new Map<string, number>();
 const busyControls = new WeakSet<HTMLElement>();
 
@@ -224,7 +230,7 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 element('refresh-icon').setAttribute('src', refreshIconUrl);
-element('refresh-adopt-sessions-icon').setAttribute('src', refreshIconUrl);
+element('refresh-path-sessions-icon').setAttribute('src', refreshIconUrl);
 
 async function ensureAuth(): Promise<void> {
   const current = await fetch(apiPath.status, { credentials: 'same-origin' });
@@ -290,14 +296,14 @@ async function loadAll(): Promise<void> {
   codexDefaults = status.codexDefaults || {};
   setRuntimeDefaultLabels(status.codexRuntimeDefaults);
   setRuntimeControls('new', codexDefaults);
-  setRuntimeControls('adopt', codexDefaults);
   rememberNotificationEventCursor(status.eventCursor);
   element('status').textContent = `${status.stats.sessions} managed sessions · ${status.stats.pendingApprovals} approvals · ${status.stats.queuedPrompts} queued`;
-  await loadWorkspaces();
   sessions = await api<Session[]>(apiPath.sessions);
   if (activeSessionId && !sessions.some((session) => session.id === activeSessionId)) activeSessionId = '';
   if (!activeSessionId && sessions[0]) activeSessionId = sessions[0].id;
-  renderSessions();
+  renderRecentSessions();
+  await loadWorkspaces();
+  renderPathSessions();
   await loadSession();
   syncNotificationEvents();
 }
@@ -333,9 +339,8 @@ async function loadDirs(path: string): Promise<void> {
   const data = await api<DirectoryListing>(apiPath.files(currentRoot, path));
   currentPath = data.relativePath || '';
   element<ValueElement>('cwd').value = data.current;
-  element<ValueElement>('adopt-cwd').value = data.current;
   renderDirs(data);
-  await loadAdoptSessions(data.current);
+  await loadPathSessionChoices(data.current);
 }
 
 function renderDirs(data: DirectoryListing): void {
@@ -358,84 +363,36 @@ function renderDirs(data: DirectoryListing): void {
   if (!box.childElementCount) box.appendChild(emptyState('No child directories'));
 }
 
-async function loadAdoptSessions(cwd = element<ValueElement>('adopt-cwd').value.trim()): Promise<void> {
+async function loadPathSessionChoices(cwd = element<ValueElement>('cwd').value.trim()): Promise<void> {
   if (!cwd) {
+    pathSessions = [];
     adoptSessions = [];
-    renderAdoptSessions();
+    renderPathSessions();
     return;
   }
 
-  const select = element<ConfigValueElement>('adopt-session-id');
-  select.disabled = true;
-  element('adopt-session-meta').textContent = 'Loading sessions';
+  const requestId = ++pathSessionsRequestId;
+  pathSessionsLoading = true;
+  renderPathSessions();
   try {
-    const data = await api<CodexResumeSessionsResponse>(apiPath.codexSessions(cwd));
-    if (element<ValueElement>('adopt-cwd').value.trim() !== data.cwd) return;
-    adoptSessions = data.sessions;
-    renderAdoptSessions();
+    const [hubSessions, codexSessions] = await Promise.all([
+      api<Session[]>(apiPath.sessionsForCwd(cwd)),
+      api<CodexResumeSessionsResponse>(apiPath.codexSessions(cwd)),
+    ]);
+    if (requestId !== pathSessionsRequestId || element<ValueElement>('cwd').value.trim() !== codexSessions.cwd) return;
+    pathSessions = hubSessions;
+    adoptSessions = codexSessions.sessions;
   } finally {
-    select.disabled = false;
+    if (requestId === pathSessionsRequestId) {
+      pathSessionsLoading = false;
+      renderPathSessions();
+    }
   }
 }
 
-function renderAdoptSessions(): void {
-  const select = element<ConfigValueElement>('adopt-session-id');
-  select.innerHTML = '';
-
-  for (const session of adoptSessions) {
-    const option = document.createElement('sl-option');
-    option.setAttribute('value', session.id);
-    if (session.managedSessionId) option.setAttribute('disabled', '');
-    option.textContent = formatCodexSessionOption(session);
-    select.appendChild(option);
-  }
-
-  const selected = adoptSessions.find((session) => !session.managedSessionId);
-  select.value = selected?.id || '';
-  renderSelectedAdoptSession();
-}
-
-function renderSelectedAdoptSession(): void {
-  const session = selectedAdoptSession();
-  const meta = element('adopt-session-meta');
-  if (!adoptSessions.length) {
-    meta.textContent = 'No Codex sessions for this directory';
-    element<ValueElement>('adopt-title').value = '';
-    return;
-  }
-  if (!session) {
-    meta.textContent = 'All Codex sessions for this directory are already managed';
-    element<ValueElement>('adopt-title').value = '';
-    return;
-  }
-
-  meta.textContent = [
-    `Updated ${formatDateTime(session.updatedAt)}`,
-    shortId(session.id),
-    session.originator || '',
-    session.threadSource || '',
-  ].filter(Boolean).join(' · ');
-  element<ValueElement>('adopt-title').value = session.title;
-}
-
-function selectedAdoptSession(): CodexResumeSession | undefined {
-  const id = element<ConfigValueElement>('adopt-session-id').value;
-  return adoptSessions.find((session) => session.id === id && !session.managedSessionId);
-}
-
-function formatCodexSessionOption(session: CodexResumeSession): string {
-  const parts = [
-    formatDateTime(session.updatedAt),
-    truncateText(session.title, 72),
-    shortId(session.id),
-  ];
-  if (session.managedSessionId) parts.push(`managed ${shortId(session.managedSessionId)}`);
-  return parts.filter(Boolean).join(' · ');
-}
-
-function formatDateTime(value: string): string {
+function formatDateTime(value: string | number): string {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString();
 }
 
@@ -457,6 +414,7 @@ async function loadSession(): Promise<void> {
   const data = await api<SessionDetail>(apiPath.session(sessionId));
   if (sessionId !== activeSessionId) return;
   currentSession = data.session;
+  syncSessionLists(data.session);
   messages = data.messages;
   pendingApprovals = data.approvals;
   promptQueue = data.queue || [];
@@ -467,32 +425,132 @@ async function loadSession(): Promise<void> {
   connectEvents(sessionId);
 }
 
-function renderSessions(): void {
-  const container = element('sessions');
+function syncSessionLists(session: Session): void {
+  sessions = upsertSession(sessions, session, true);
+  pathSessions = upsertSession(pathSessions, session, session.cwd === element<ValueElement>('cwd').value.trim());
+  renderRecentSessions();
+  renderPathSessions();
+}
+
+function upsertSession(list: Session[], session: Session, include: boolean): Session[] {
+  const withoutSession = list.filter((item) => item.id !== session.id);
+  if (!include) return withoutSession;
+  return [session, ...withoutSession].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+function renderRecentSessions(): void {
+  const container = element('recent-sessions');
   container.innerHTML = '';
-  for (const session of sessions) {
-    const button = createButton('', {
-      className: `session${session.id === activeSessionId ? ' active' : ''}`,
-      size: 'small',
-      onClick: async () => {
-        activeSessionId = session.id;
-        localStorage.setItem('cx_tg_session', activeSessionId);
-        renderSessions();
-        await loadSession();
-      },
-    });
-    const line = document.createElement('span');
-    line.className = 'session-line';
-    const name = document.createElement('span');
-    name.className = 'session-name';
-    name.textContent = session.title;
-    line.append(name, statusBadge(session.status));
-    const cwd = document.createElement('span');
-    cwd.className = 'session-path muted';
-    cwd.textContent = displayPath(session.cwd);
-    button.append(line, cwd);
-    container.appendChild(button);
+  if (!sessions.length) {
+    container.appendChild(emptyState('No Hub sessions'));
+    return;
   }
+  for (const session of sessions) container.appendChild(hubSessionButton(session, true));
+}
+
+function renderPathSessions(): void {
+  const container = element('path-sessions');
+  container.innerHTML = '';
+  if (pathSessionsLoading) {
+    container.appendChild(emptyState('Loading sessions'));
+    return;
+  }
+
+  const unmanagedCodexSessions = adoptSessions.filter((session) => !session.managedSessionId);
+  if (!pathSessions.length && !unmanagedCodexSessions.length) {
+    container.appendChild(emptyState('No sessions in this directory'));
+    return;
+  }
+
+  if (pathSessions.length) {
+    container.appendChild(sectionLabel('Hub-managed'));
+    for (const session of pathSessions) container.appendChild(hubSessionButton(session, false));
+  }
+
+  if (unmanagedCodexSessions.length) {
+    container.appendChild(sectionLabel('Codex resume'));
+    for (const session of unmanagedCodexSessions) container.appendChild(codexSessionButton(session));
+  }
+}
+
+function hubSessionButton(session: Session, showPath: boolean): ButtonElement {
+  const button = createButton('', {
+    className: `session${session.id === activeSessionId ? ' active' : ''}`,
+    size: 'small',
+    onClick: () => selectHubSession(session),
+  });
+  const line = document.createElement('span');
+  line.className = 'session-line';
+  const name = document.createElement('span');
+  name.className = 'session-name';
+  name.textContent = session.title;
+  line.append(name, statusBadge(session.status));
+  const meta = document.createElement('span');
+  meta.className = 'session-path muted';
+  meta.textContent = showPath
+    ? displayPath(session.cwd)
+    : [`Updated ${formatDateTime(session.updatedAt)}`, shortId(session.id)].filter(Boolean).join(' · ');
+  button.append(line, meta);
+  return button;
+}
+
+function codexSessionButton(session: CodexResumeSession): ButtonElement {
+  const button = createButton('', {
+    className: 'session codex-session',
+    size: 'small',
+    onClick: () => adoptCodexSession(session),
+  });
+  const line = document.createElement('span');
+  line.className = 'session-line';
+  const name = document.createElement('span');
+  name.className = 'session-name';
+  name.textContent = session.title;
+  const action = document.createElement('span');
+  action.className = 'session-action';
+  action.textContent = 'Adopt';
+  line.append(name, action);
+  const meta = document.createElement('span');
+  meta.className = 'session-path muted';
+  meta.textContent = [
+    `Updated ${formatDateTime(session.updatedAt)}`,
+    shortId(session.id),
+    session.originator || '',
+  ].filter(Boolean).join(' · ');
+  button.append(line, meta);
+  return button;
+}
+
+function sectionLabel(text: string): HTMLElement {
+  const label = document.createElement('div');
+  label.className = 'section-label muted';
+  label.textContent = text;
+  return label;
+}
+
+async function selectHubSession(session: Session): Promise<void> {
+  activeSessionId = session.id;
+  localStorage.setItem('cx_tg_session', activeSessionId);
+  renderRecentSessions();
+  renderPathSessions();
+  await loadSession();
+  closeSidebarOnMobile();
+}
+
+async function adoptCodexSession(codexSession: CodexResumeSession): Promise<void> {
+  const cwd = element<ValueElement>('cwd').value.trim();
+  const session = await api<Session>(apiPath.adoptSession, {
+    method: 'POST',
+    body: JSON.stringify({
+      threadId: codexSession.id,
+      cwd,
+      title: codexSession.title,
+      config: runtimeConfigFromControls('new'),
+    }),
+  });
+  activeSessionId = session.id;
+  localStorage.setItem('cx_tg_session', activeSessionId);
+  await loadAll();
+  closeSidebarOnMobile();
 }
 
 function renderSession(): void {
@@ -954,7 +1012,7 @@ function submitButton(form: HTMLFormElement): HTMLElement {
   return form.querySelector('sl-button[type="submit"]') as HTMLElement || form;
 }
 
-function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: SessionConfig): void {
+function setRuntimeControls(prefix: 'new' | 'runtime', config: SessionConfig): void {
   element<ToggleElement>(`${prefix}-search`).checked = config.search === true;
   element<ConfigValueElement>(`${prefix}-permission-mode`).value = config.permissionMode || 'default';
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
@@ -964,7 +1022,7 @@ function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: Session
 }
 
 function setRuntimeDefaultLabels(defaults: StatusResponse['codexRuntimeDefaults']): void {
-  (['new', 'adopt', 'runtime'] as const).forEach((prefix) => {
+  (['new', 'runtime'] as const).forEach((prefix) => {
     setSelectOptionLabel(`${prefix}-model`, 'auto', `Default(${defaults.model})`);
     setSelectOptionLabel(`${prefix}-reasoning-effort`, 'default', `Default(${defaults.reasoningEffort})`);
   });
@@ -975,7 +1033,7 @@ function setSelectOptionLabel(selectId: string, value: string, label: string): v
   if (option) option.textContent = label;
 }
 
-function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): SessionConfig {
+function runtimeConfigFromControls(prefix: 'new' | 'runtime'): SessionConfig {
   const config: SessionConfig = {
     search: element<ToggleElement>(`${prefix}-search`).checked,
     permissionMode: element<ConfigValueElement>(`${prefix}-permission-mode`).value,
@@ -1002,6 +1060,14 @@ async function saveRuntimeConfig(): Promise<void> {
   await loadAll();
 }
 
+function setSidebarOpen(open: boolean): void {
+  document.body.classList.toggle('sidebar-open', open);
+}
+
+function closeSidebarOnMobile(): void {
+  if (window.matchMedia('(max-width: 760px)').matches) setSidebarOpen(false);
+}
+
 element<ValueElement>('workspace-root').addEventListener('sl-change', (event) => {
   currentRoot = (event.currentTarget as ValueElement).value;
   currentPath = '';
@@ -1010,8 +1076,10 @@ element<ValueElement>('workspace-root').addEventListener('sl-change', (event) =>
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
 element('refresh').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, loadAll));
-element('refresh-adopt-sessions').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadAdoptSessions()));
-element('adopt-session-id').addEventListener('sl-change', () => renderSelectedAdoptSession());
+element('refresh-path-sessions').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadPathSessionChoices()));
+element('sidebar-toggle').addEventListener('click', () => setSidebarOpen(true));
+element('sidebar-close').addEventListener('click', () => setSidebarOpen(false));
+element('sidebar-backdrop').addEventListener('click', () => setSidebarOpen(false));
 element('claim').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, '/control'), {
@@ -1075,27 +1143,7 @@ element<HTMLFormElement>('new-session').addEventListener('submit', (event) => {
     localStorage.setItem('cx_tg_session', activeSessionId);
     formElement.reset();
     await loadAll();
-  });
-});
-element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => {
-  event.preventDefault();
-  const formElement = event.currentTarget as HTMLFormElement;
-  runAction(submitButton(formElement), async () => {
-    const selected = selectedAdoptSession();
-    if (!selected) throw new Error('Select a Codex session');
-    const threadId = selected.id;
-    const cwd = element<ValueElement>('adopt-cwd').value.trim();
-    const title = element<ValueElement>('adopt-title').value.trim();
-    const session = await api<Session>(apiPath.adoptSession, {
-      method: 'POST',
-      body: JSON.stringify({ threadId, cwd, title, config: runtimeConfigFromControls('adopt') }),
-    });
-    activeSessionId = session.id;
-    localStorage.setItem('cx_tg_session', activeSessionId);
-    formElement.reset();
-    element<ValueElement>('adopt-cwd').value = element<ValueElement>('cwd').value;
-    await loadAdoptSessions();
-    await loadAll();
+    closeSidebarOnMobile();
   });
 });
 element<HTMLFormElement>('composer').addEventListener('submit', (event) => {

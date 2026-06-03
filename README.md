@@ -70,12 +70,13 @@ http://127.0.0.1:3030/?token=<access-token>
 
 The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
 The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
-Web shows Hub-managed sessions. Native Codex sessions appear after adoption.
+Web shows recently used Hub-managed sessions at the top of the sidebar. The workspace panel selects a directory, then shows Hub-managed sessions for that directory and native Codex sessions that can be adopted into Hub. On mobile, the sidebar opens from the top-left sessions button.
 
 The Web console can:
 
 - create Hub-managed sessions from configured workspace roots
-- browse Codex sessions under the selected workspace directory and adopt one into Hub
+- browse Hub-managed sessions under the selected workspace directory
+- browse native Codex sessions under the selected workspace directory and adopt one into Hub
 - browse workspace directories
 - send messages to Codex
 - view Hub messages, runtime status, Codex config, thread id, and turn id
@@ -116,7 +117,7 @@ cx-tg doctor
 
 `cc-hub` is kept as an alias for the same binary.
 
-Web adoption follows Codex resume: choose a workspace directory, pick one of the Codex sessions recorded for that directory, then create a Hub session for it. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
 `cx-tg` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

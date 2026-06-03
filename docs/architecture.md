@@ -129,6 +129,7 @@ GET    /api/events
 API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_tg_auth` HttpOnly cookie. Web calls `POST /api/auth` with the bearer token once, then uses the cookie for REST and EventSource requests. `/api/events` does not accept token query parameters.
 
 `GET /api/status` includes `homePath` so Web can display local paths as `~/...` using the Hub process home directory. It also includes the latest global `eventCursor` for browser notification streams.
+`GET /api/sessions?cwd=<path>` lists Hub-managed sessions for one workspace directory, ordered by Hub session `updatedAt`. Without `cwd`, it lists all Hub-managed sessions for recent/history views.
 `GET /api/codex/sessions?cwd=<path>` lists Codex resume sessions recorded for one workspace directory. Results include thread title, timestamps, origin, and the Hub session id when that Codex session is already managed.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Web uses that cursor to open one SSE connection per selected session without replaying the already-loaded snapshot.
 `POST /api/sessions` and `POST /api/sessions/adopt` accept optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
@@ -160,9 +161,20 @@ Queued jobs survive Hub restart. On startup, leftover `running` jobs are marked 
 
 ## Session Adoption
 
-Hub sessions are the synchronization boundary for Web, Telegram, and CLI. Web adoption follows Codex resume cwd filtering:
+Hub sessions are the synchronization boundary for Web, Telegram, and CLI. The Web sidebar uses three path-oriented sections:
 
 ```text
+Recent Hub-managed sessions
+Selected workspace directory
+Sessions in this directory
+  - Hub-managed sessions
+  - Native Codex sessions available to adopt
+```
+
+Web adoption follows Codex resume cwd filtering inside the selected directory:
+
+```text
+GET /api/sessions?cwd=<path>
 GET /api/codex/sessions?cwd=<path>
 pick Codex session
 POST /api/sessions/adopt

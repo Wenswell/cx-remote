@@ -56,6 +56,10 @@ const codexSessionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional(),
 });
 
+const sessionsQuerySchema = z.object({
+  cwd: z.string().min(1).optional(),
+});
+
 const resolveApprovalSchema = z.object({
   decision: z.string().min(1),
   controlType: controlTypeSchema.default('web'),
@@ -257,7 +261,11 @@ export class HubServer {
       });
     });
 
-    app.get('/api/sessions', (c) => c.json(this.hub.listSessions()));
+    app.get('/api/sessions', (c) => {
+      const input = sessionsQuerySchema.parse({ cwd: c.req.query('cwd') });
+      const cwd = input.cwd ? resolveWorkspacePath(this.config, input.cwd) : undefined;
+      return c.json(this.hub.listSessions(cwd));
+    });
     app.post('/api/sessions', async (c) => {
       const input = createSessionSchema.parse(await c.req.json());
       const session = this.hub.createSession({

@@ -8,10 +8,15 @@
 </head>
 <body>
   <div class="shell">
-    <aside class="side stack">
-      <div>
-        <div class="title">CX TG</div>
-        <div class="muted" id="status">Loading</div>
+    <aside class="side stack" id="sidebar">
+      <div class="side-head">
+        <div>
+          <div class="title">CX TG</div>
+          <div class="muted" id="status">Loading</div>
+        </div>
+        <sl-button id="sidebar-close" class="mobile-only icon-button" type="button" size="small" title="Close sessions">
+          <sl-icon library="system" name="x-lg"></sl-icon>
+        </sl-button>
       </div>
       <div class="row">
         <sl-button id="refresh" type="button" size="small">
@@ -19,21 +24,34 @@
           Refresh
         </sl-button>
       </div>
-      <strong>Hub-managed sessions</strong>
-      <div id="sessions" class="stack"></div>
-      <sl-details class="session-details" summary="Create or adopt">
+      <sl-details class="session-details" summary="Recent Hub-managed sessions" open>
+        <div id="recent-sessions" class="session-tools stack"></div>
+      </sl-details>
+      <section class="workspace-panel stack">
+        <strong>Workspace</strong>
+        <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
+        <div class="row">
+          <sl-button id="root-dir" type="button" size="small">
+            <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
+            Root
+          </sl-button>
+          <sl-input id="cwd" name="cwd" placeholder="Working directory" required readonly size="small"></sl-input>
+        </div>
+        <div id="dirs" class="dir-list"></div>
+      </section>
+      <section class="path-panel stack">
+        <div class="section-head">
+          <strong>Sessions in this directory</strong>
+          <sl-button id="refresh-path-sessions" type="button" size="small">
+            <sl-icon id="refresh-path-sessions-icon" slot="prefix"></sl-icon>
+            Refresh
+          </sl-button>
+        </div>
+        <div id="path-sessions" class="stack"></div>
+      </section>
+      <sl-details class="session-details" summary="Create session">
         <div class="session-tools stack">
           <form id="new-session" class="stack">
-            <strong>Create managed session</strong>
-            <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
-            <div class="row">
-              <sl-button id="root-dir" type="button" size="small">
-                <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
-                Root
-              </sl-button>
-              <sl-input id="cwd" name="cwd" placeholder="cwd" required size="small"></sl-input>
-            </div>
-            <div id="dirs" class="dir-list"></div>
             <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
             <sl-details class="runtime-details" summary="Runtime">
               <div class="runtime-controls">
@@ -62,55 +80,22 @@
               Create
             </sl-button>
           </form>
-          <form id="adopt-session" class="stack">
-            <strong>Adopt Codex session</strong>
-            <div class="row">
-              <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required readonly size="small"></sl-input>
-              <sl-button id="refresh-adopt-sessions" type="button" size="small">
-                <sl-icon id="refresh-adopt-sessions-icon" slot="prefix"></sl-icon>
-                Refresh
-              </sl-button>
-            </div>
-            <sl-select id="adopt-session-id" label="Codex session" placeholder="Select Codex session" required size="small"></sl-select>
-            <div id="adopt-session-meta" class="details muted"></div>
-            <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
-            <sl-details class="runtime-details" summary="Runtime">
-              <div class="runtime-controls">
-                <sl-switch id="adopt-search" size="small" checked>Search</sl-switch>
-                <sl-select id="adopt-permission-mode" label="Permission mode" size="small">
-                  <sl-option value="default">Default</sl-option>
-                  <sl-option value="read-only">Read Only</sl-option>
-                  <sl-option value="safe-yolo">Safe Yolo</sl-option>
-                  <sl-option value="yolo">Yolo</sl-option>
-                </sl-select>
-                <sl-select id="adopt-model" label="Model" size="small">
-                  <sl-option value="auto">Default</sl-option>
-                  <sl-option value="gpt-5.5">GPT-5.5</sl-option>
-                  <sl-option value="gpt-5.4">GPT-5.4</sl-option>
-                </sl-select>
-                <sl-select id="adopt-reasoning-effort" label="Reasoning effort" size="small">
-                  <sl-option value="default">Default</sl-option>
-                  <sl-option value="xhigh">XHigh</sl-option>
-                  <sl-option value="high">High</sl-option>
-                  <sl-option value="medium">Medium</sl-option>
-                </sl-select>
-              </div>
-            </sl-details>
-            <sl-button variant="primary" type="submit">
-              <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
-              Adopt session
-            </sl-button>
-          </form>
         </div>
       </sl-details>
       <div id="prompt-queue" class="stack"></div>
     </aside>
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
     <main class="main">
       <header class="topbar">
-        <div>
-          <div class="title" id="session-title">No Hub session</div>
-          <div class="details" id="session-meta"></div>
-          <div class="details" id="session-detail"></div>
+        <div class="topbar-title">
+          <sl-button id="sidebar-toggle" class="mobile-only icon-button" type="button" size="small" title="Open sessions">
+            <sl-icon library="system" name="list"></sl-icon>
+          </sl-button>
+          <div>
+            <div class="title" id="session-title">No Hub session</div>
+            <div class="details" id="session-meta"></div>
+            <div class="details" id="session-detail"></div>
+          </div>
         </div>
         <div class="row">
           <sl-button id="claim" type="button" size="small" title="Take exclusive control for this browser">

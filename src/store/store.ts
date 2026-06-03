@@ -126,8 +126,10 @@ export class Store {
     return row ? decodeSession(row) : null;
   }
 
-  listSessions(): Session[] {
-    const rows = this.db.prepare('SELECT * FROM sessions ORDER BY updatedAt DESC').all() as SessionRow[];
+  listSessions(cwd?: string): Session[] {
+    const rows = cwd === undefined
+      ? this.db.prepare('SELECT * FROM sessions ORDER BY updatedAt DESC').all() as SessionRow[]
+      : this.db.prepare('SELECT * FROM sessions WHERE cwd = ? ORDER BY updatedAt DESC').all(cwd) as SessionRow[];
     return rows.map(decodeSession);
   }
 

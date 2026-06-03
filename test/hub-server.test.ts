@@ -189,6 +189,29 @@ test('session adopt API creates a Hub-managed session for an existing Codex thre
   }
 });
 
+test('sessions API filters Hub-managed sessions by workspace directory', async () => {
+  const context = createTestApp();
+
+  try {
+    const rootSession = context.hub.createSession({ cwd: process.cwd(), title: 'Root session' });
+    const srcSession = context.hub.createSession({ cwd: join(process.cwd(), 'src'), title: 'Src session' });
+
+    const response = await context.app.request(
+      `/api/sessions?cwd=${encodeURIComponent(join(process.cwd(), 'src'))}`,
+      { headers: authHeaders(context.config) },
+    );
+    const body = await json<Array<{ id: string; title: string; cwd: string }>>(response);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.map((session) => session.id), [srcSession.id]);
+    assert.equal(body[0]?.title, 'Src session');
+    assert.equal(body[0]?.cwd, join(process.cwd(), 'src'));
+    assert.notEqual(body[0]?.id, rootSession.id);
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
 test('Codex sessions API lists resume sessions for a workspace directory', async () => {
   const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
   const context = createTestApp({ codexHome });

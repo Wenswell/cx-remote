@@ -136,8 +136,8 @@ export class ControlHub {
     return session;
   }
 
-  listSessions(): Session[] {
-    return this.store.listSessions();
+  listSessions(cwd?: string): Session[] {
+    return this.store.listSessions(cwd);
   }
 
   getSessionDetail(sessionId: string): SessionDetail {
