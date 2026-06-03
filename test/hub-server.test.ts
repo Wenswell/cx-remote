@@ -392,7 +392,12 @@ test('status exposes browser bootstrap metadata', async () => {
     const session = createSession(context.store);
     const event = context.store.addEvent({ type: 'session.updated', sessionId: session.id, payload: { marker: 'status' }, createdAt: 10 });
 
-    const status = await json<{ homePath: string; eventCursor: number; codexDefaults: { permissionMode: string; search: boolean } }>(await context.app.request(
+    const status = await json<{
+      homePath: string;
+      eventCursor: number;
+      codexDefaults: { permissionMode: string; search: boolean };
+      codexRuntimeDefaults: { model: string; reasoningEffort: string };
+    }>(await context.app.request(
       '/api/status',
       { headers: authHeaders(context.config) },
     ));
@@ -401,6 +406,8 @@ test('status exposes browser bootstrap metadata', async () => {
     assert.equal(status.eventCursor, event.id);
     assert.equal(status.codexDefaults.permissionMode, 'default');
     assert.equal(status.codexDefaults.search, true);
+    assert.equal(typeof status.codexRuntimeDefaults.model, 'string');
+    assert.equal(typeof status.codexRuntimeDefaults.reasoningEffort, 'string');
   } finally {
     await closeTestHub(context);
   }

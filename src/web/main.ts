@@ -92,6 +92,10 @@ type StatusResponse = {
   homePath: string;
   eventCursor: number;
   codexDefaults: SessionConfig;
+  codexRuntimeDefaults: {
+    model: string;
+    reasoningEffort: string;
+  };
   stats: {
     sessions: number;
     pendingApprovals: number;
@@ -265,6 +269,7 @@ async function loadAll(): Promise<void> {
   const status = await api<StatusResponse>(apiPath.status);
   homePath = status.homePath;
   codexDefaults = status.codexDefaults || {};
+  setRuntimeDefaultLabels(status.codexRuntimeDefaults);
   setRuntimeControls('new', codexDefaults);
   setRuntimeControls('adopt', codexDefaults);
   rememberNotificationEventCursor(status.eventCursor);
@@ -857,6 +862,18 @@ function setRuntimeControls(prefix: 'new' | 'adopt' | 'runtime', config: Session
   if (reasoningEffort) reasoningEffort.value = config.reasoningEffort || 'default';
 }
 
+function setRuntimeDefaultLabels(defaults: StatusResponse['codexRuntimeDefaults']): void {
+  (['new', 'adopt', 'runtime'] as const).forEach((prefix) => {
+    setSelectOptionLabel(`${prefix}-model`, 'auto', `Default(${defaults.model})`);
+    setSelectOptionLabel(`${prefix}-reasoning-effort`, 'default', `Default(${defaults.reasoningEffort})`);
+  });
+}
+
+function setSelectOptionLabel(selectId: string, value: string, label: string): void {
+  const option = document.querySelector(`#${selectId} sl-option[value="${value}"]`);
+  if (option) option.textContent = label;
+}
+
 function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): SessionConfig {
   const config: SessionConfig = {
     search: element<ToggleElement>(`${prefix}-search`).checked,
@@ -864,8 +881,8 @@ function runtimeConfigFromControls(prefix: 'new' | 'adopt' | 'runtime'): Session
   };
   const model = document.getElementById(`${prefix}-model`) as ConfigValueElement | null;
   const reasoningEffort = document.getElementById(`${prefix}-reasoning-effort`) as ConfigValueElement | null;
-  if (model && model.value !== 'auto') config.model = model.value;
-  if (reasoningEffort && reasoningEffort.value !== 'default') config.reasoningEffort = reasoningEffort.value;
+  if (model) config.model = model.value;
+  if (reasoningEffort) config.reasoningEffort = reasoningEffort.value;
   return config;
 }
 

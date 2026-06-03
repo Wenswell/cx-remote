@@ -128,7 +128,7 @@ cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 
-Search is enabled by default. Use `--no-search` to disable it for one session. `model=auto` and `reasoningEffort=default` leave those choices to Codex. `--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
+Search is enabled by default. Use `--no-search` to disable it for one session. `model=auto` and `reasoningEffort=default` leave those choices to Codex; Web labels them as `Default(<resolved value>)`. `--dangerously-bypass-approvals-and-sandbox` is accepted as a `permissionMode=yolo` shortcut. At runtime, Hub starts `codex app-server` with `--search` when search is enabled, then sends mode-derived `approvalPolicy` and `permissions` through `thread/start`, `thread/resume`, and `turn/start`. Existing sessions can be updated while idle; queued or running sessions reject config updates.
 
 ## Telegram
 

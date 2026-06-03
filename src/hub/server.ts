@@ -7,6 +7,7 @@ import { cors } from 'hono/cors';
 import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
+import { resolveCodexRuntimeDefaults } from '../agents/codex/defaults.js';
 import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
@@ -157,6 +158,7 @@ export class HubServer {
       homePath: homedir(),
       workspaceRoots: this.config.workspace.roots,
       codexDefaults: this.hub.defaultSessionConfig(),
+      codexRuntimeDefaults: resolveCodexRuntimeDefaults(),
       eventCursor: this.hub.latestEventId(),
       server: {
         host: this.config.server.host,

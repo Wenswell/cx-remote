@@ -195,7 +195,7 @@ Session runtime fields:
   -> config.permissionMode = yolo
 ```
 
-`model=auto` and `reasoningEffort=default` are stored as global defaults only; session runtime omits those app-server parameters until a concrete value is selected. Search is enabled by default. `CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends mode-derived `approvalPolicy` and v2 `permissions` through `thread/start`, `thread/resume`, and `turn/start`.
+`model=auto` and `reasoningEffort=default` omit those app-server parameters and inherit Codex's runtime defaults. Web displays those inherited values as `Default(<resolved value>)`. Search is enabled by default. `CodexRuntime` passes `search` to the top-level `codex app-server` process. It sends mode-derived `approvalPolicy` and v2 `permissions` through `thread/start`, `thread/resume`, and `turn/start`.
 
 Permission mode mapping:
 

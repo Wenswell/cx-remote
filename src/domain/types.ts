@@ -10,9 +10,9 @@ export type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access'
 
 export type CodexPermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
 
-export const CODEX_MODEL_OPTIONS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.2'] as const;
+export const CODEX_MODEL_OPTIONS = ['gpt-5.5', 'gpt-5.4'] as const;
 
-export const CODEX_REASONING_EFFORT_OPTIONS = ['low', 'medium', 'high', 'xhigh'] as const;
+export const CODEX_REASONING_EFFORT_OPTIONS = ['xhigh', 'high', 'medium'] as const;
 
 export type ApprovalType = 'tool' | 'choice';
 

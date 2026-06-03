@@ -169,6 +169,6 @@ cx-tg adopt --thread <codex-thread-id> --cwd <path> --permission-mode safe-yolo
 cx-tg session-config <session-id> --search --permission-mode yolo
 ```
 
-Search is enabled by default; `--no-search` disables it for one session. Model choices are `auto`, `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, and `gpt-5.2`. Reasoning effort choices are `default`, `low`, `medium`, `high`, and `xhigh`.
+Search is enabled by default; `--no-search` disables it for one session. Model choices are `auto`, `gpt-5.5`, and `gpt-5.4`. Reasoning effort choices are `default`, `xhigh`, `high`, and `medium`. Web labels `auto` and `default` as `Default(<resolved value>)` using Codex's inherited runtime defaults.
 
 Permission modes are `default`, `read-only`, `safe-yolo`, and `yolo`. The dangerous Codex flag is accepted as a `yolo` shortcut.
