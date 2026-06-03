@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CX Remote</title>
+  <script type="module" crossorigin src="./assets/index-BWgiMkaH.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-Muj17d0h.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="side stack" id="sidebar">
+      <div class="side-head">
+        <div>
+          <div class="title">CX Remote</div>
+          <div class="muted" id="status">Loading</div>
+        </div>
+        <sl-button id="sidebar-close" class="mobile-only icon-button" type="button" size="small" title="Close sessions">
+          <sl-icon library="system" name="x-lg"></sl-icon>
+        </sl-button>
+      </div>
+      <div class="row">
+        <sl-button id="refresh" type="button" size="small">
+          <sl-icon id="refresh-icon" slot="prefix"></sl-icon>
+          Refresh
+        </sl-button>
+      </div>
+      <sl-details class="session-details" summary="Recent Hub-managed sessions" open>
+        <div id="recent-sessions" class="session-tools stack"></div>
+      </sl-details>
+      <section class="workspace-panel stack">
+        <strong>Workspace</strong>
+        <sl-select id="workspace-root" label="Workspace root" size="small" hidden></sl-select>
+        <div class="row">
+          <sl-button id="root-dir" type="button" size="small">
+            <sl-icon slot="prefix" library="system" name="chevron-left"></sl-icon>
+            Root
+          </sl-button>
+          <sl-input id="cwd" name="cwd" placeholder="Working directory" required readonly size="small"></sl-input>
+        </div>
+        <div id="dirs" class="dir-list"></div>
+      </section>
+      <section class="path-panel stack">
+        <div class="section-head">
+          <strong>Sessions in this directory</strong>
+          <sl-button id="refresh-path-sessions" type="button" size="small">
+            <sl-icon id="refresh-path-sessions-icon" slot="prefix"></sl-icon>
+            Refresh
+          </sl-button>
+        </div>
+        <div id="path-sessions" class="stack"></div>
+      </section>
+      <sl-details class="session-details" summary="Create session">
+        <div class="session-tools stack">
+          <form id="new-session" class="stack">
+            <sl-input id="new-title" name="title" placeholder="title optional" size="small"></sl-input>
+            <sl-details class="runtime-details" summary="Runtime">
+              <div class="runtime-controls">
+                <sl-switch id="new-search" size="small" checked>Search</sl-switch>
+                <sl-select id="new-permission-mode" label="Permission mode" size="small">
+                  <sl-option value="default">Default</sl-option>
+                  <sl-option value="read-only">Read Only</sl-option>
+                  <sl-option value="safe-yolo">Safe Yolo</sl-option>
+                  <sl-option value="yolo">Yolo</sl-option>
+                </sl-select>
+                <sl-select id="new-model" label="Model" size="small">
+                  <sl-option value="auto">Default</sl-option>
+                  <sl-option value="gpt-5.5">GPT-5.5</sl-option>
+                  <sl-option value="gpt-5.4">GPT-5.4</sl-option>
+                </sl-select>
+                <sl-select id="new-reasoning-effort" label="Reasoning effort" size="small">
+                  <sl-option value="default">Default</sl-option>
+                  <sl-option value="xhigh">XHigh</sl-option>
+                  <sl-option value="high">High</sl-option>
+                  <sl-option value="medium">Medium</sl-option>
+                </sl-select>
+              </div>
+            </sl-details>
+            <sl-button variant="primary" type="submit">
+              <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+              Create
+            </sl-button>
+          </form>
+        </div>
+      </sl-details>
+      <div id="prompt-queue" class="stack"></div>
+    </aside>
+    <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <sl-button id="sidebar-toggle" class="mobile-only icon-button" type="button" size="small" title="Open sessions">
+            <sl-icon library="system" name="list"></sl-icon>
+          </sl-button>
+          <div>
+            <div class="title" id="session-title">No Hub session</div>
+            <div class="details" id="session-meta"></div>
+            <div class="details" id="session-detail"></div>
+          </div>
+        </div>
+        <div class="row">
+          <sl-button id="claim" type="button" size="small" title="Take exclusive control for this browser">
+            <sl-icon slot="prefix" library="system" name="person-fill"></sl-icon>
+            Take control
+          </sl-button>
+          <sl-button id="release" type="button" size="small" title="Release this browser's exclusive control">
+            <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
+            Release control
+          </sl-button>
+          <sl-button id="rename" type="button" size="small" title="Edit the session title">
+            <sl-icon slot="prefix" library="system" name="copy"></sl-icon>
+            Edit title
+          </sl-button>
+          <sl-button id="runtime" type="button" size="small" title="Edit this session runtime config">
+            <sl-icon slot="prefix" library="system" name="gear-fill"></sl-icon>
+            Runtime
+          </sl-button>
+          <sl-button id="stop" type="button" size="small" variant="warning" title="Cancel the running turn and queued prompts">
+            <sl-icon slot="prefix" library="system" name="x-circle-fill"></sl-icon>
+            Cancel
+          </sl-button>
+          <sl-button id="delete" type="button" size="small" variant="danger" title="Delete this Hub session record and Hub history">
+            <sl-icon slot="prefix" library="system" name="x-lg"></sl-icon>
+            Delete from Hub
+          </sl-button>
+          <sl-switch id="notify" size="small" title="Notify when this session receives an assistant response">Notify</sl-switch>
+        </div>
+      </header>
+      <section class="approvals" id="approvals">
+        <div id="pending-approvals" class="stack"></div>
+        <sl-details id="approval-history-details" summary="Approval history">
+          <div id="approval-history" class="stack"></div>
+        </sl-details>
+      </section>
+      <section class="messages" id="messages"></section>
+      <form id="composer" class="composer">
+        <sl-textarea id="composer-text" name="text" placeholder="Message Codex through Hub" required resize="auto"></sl-textarea>
+        <sl-button variant="primary" type="submit">
+          <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
+          Send
+        </sl-button>
+        <span class="muted" id="send-state"></span>
+      </form>
+    </main>
+  </div>
+  <sl-alert id="error-alert" variant="danger" closable duration="5000">
+    <sl-icon slot="icon" library="system" name="x-circle-fill"></sl-icon>
+    <span id="error-message"></span>
+  </sl-alert>
+  <sl-dialog id="runtime-dialog" label="Session runtime">
+    <div class="runtime-controls">
+      <sl-switch id="runtime-search" size="small" checked>Search</sl-switch>
+      <sl-select id="runtime-permission-mode" label="Permission mode" size="small">
+        <sl-option value="default">Default</sl-option>
+        <sl-option value="read-only">Read Only</sl-option>
+        <sl-option value="safe-yolo">Safe Yolo</sl-option>
+        <sl-option value="yolo">Yolo</sl-option>
+      </sl-select>
+      <sl-select id="runtime-model" label="Model" size="small">
+        <sl-option value="auto">Default</sl-option>
+        <sl-option value="gpt-5.5">GPT-5.5</sl-option>
+        <sl-option value="gpt-5.4">GPT-5.4</sl-option>
+      </sl-select>
+      <sl-select id="runtime-reasoning-effort" label="Reasoning effort" size="small">
+        <sl-option value="default">Default</sl-option>
+        <sl-option value="xhigh">XHigh</sl-option>
+        <sl-option value="high">High</sl-option>
+        <sl-option value="medium">Medium</sl-option>
+      </sl-select>
+    </div>
+    <sl-button slot="footer" id="runtime-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="runtime-save" type="button" variant="primary">Save</sl-button>
+  </sl-dialog>
+  <sl-dialog id="adopt-dialog" label="Adopt Codex session">
+    <div class="adopt-preview stack">
+      <div>
+        <div class="title" id="adopt-title"></div>
+        <div class="details" id="adopt-meta"></div>
+      </div>
+      <div id="adopt-preview-messages" class="adopt-preview-messages stack"></div>
+    </div>
+    <sl-button slot="footer" id="adopt-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="adopt-confirm" type="button" variant="primary">Adopt and import</sl-button>
+  </sl-dialog>
+  <sl-dialog id="delete-dialog" label="Delete Hub session">
+    <div id="delete-dialog-message">Delete this session?</div>
+    <div class="muted">This removes Hub messages, queue, approvals, and events. The Codex thread remains in Codex.</div>
+    <sl-button slot="footer" id="delete-cancel" type="button">Cancel</sl-button>
+    <sl-button slot="footer" id="delete-confirm" type="button" variant="danger">Delete from Hub</sl-button>
+  </sl-dialog>
+</body>
+</html>
