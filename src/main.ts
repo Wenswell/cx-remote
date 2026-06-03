@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { configureLogger, logger } from './logger.js';
 import { loadConfig, serverPublicUrl, serverTokenUrl } from './config/config.js';
@@ -63,9 +64,14 @@ export async function startApp(): Promise<void> {
   process.once('SIGTERM', () => { void shutdown(); });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isEntrypoint(import.meta.url, process.argv[1])) {
   runCli().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   });
+}
+
+export function isEntrypoint(moduleUrl: string, argvPath: string | undefined): boolean {
+  if (!argvPath) return false;
+  return moduleUrl === pathToFileURL(realpathSync(argvPath)).href;
 }
