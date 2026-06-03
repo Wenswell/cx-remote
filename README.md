@@ -11,7 +11,7 @@ First usable rebuild:
 - CLI control commands
 - SQLite persistence for Hub sessions, messages, prompt queue, approvals, bindings, and events
 - Codex execution through `codex app-server`
-- adoption of existing native Codex threads into Hub-managed sessions
+- adoption of existing native Codex sessions into Hub-managed sessions
 - Telegram is the only IM control in this version
 
 ## Install
@@ -70,12 +70,12 @@ http://127.0.0.1:3030/?token=<access-token>
 
 The token URL is a bootstrap login. Web stores the access token in an HttpOnly cookie and removes the token from the address bar before opening the event stream.
 The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
-Web shows Hub-managed sessions. Native Codex threads appear after adoption.
+Web shows Hub-managed sessions. Native Codex sessions appear after adoption.
 
 The Web console can:
 
 - create Hub-managed sessions from configured workspace roots
-- adopt existing Codex threads
+- browse Codex sessions under the selected workspace directory and adopt one into Hub
 - browse workspace directories
 - send messages to Codex
 - view Hub messages, runtime status, Codex config, thread id, and turn id
@@ -116,7 +116,7 @@ cx-tg doctor
 
 `cc-hub` is kept as an alias for the same binary.
 
-`cx-tg adopt` creates a Hub session that points to an existing Codex thread. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+Web adoption follows Codex resume: choose a workspace directory, pick one of the Codex sessions recorded for that directory, then create a Hub session for it. `cx-tg adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
 `cx-tg` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

@@ -1,5 +1,7 @@
 import { strict as assert } from 'node:assert';
-import { homedir } from 'node:os';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { configureLogger } from '../src/logger.js';
 import {
@@ -184,6 +186,37 @@ test('session adopt API creates a Hub-managed session for an existing Codex thre
     assert.equal(detail.session.codexThreadId, 'thread-1');
   } finally {
     await closeTestHub(context);
+  }
+});
+
+test('Codex sessions API lists resume sessions for a workspace directory', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-tg-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-free', process.cwd(), 'Free thread', '2026-06-03T10:00:00.000Z');
+    writeCodexSession(codexHome, 'thread-managed', process.cwd(), 'Managed thread', '2026-06-03T11:00:00.000Z');
+    writeCodexSession(codexHome, 'thread-other', tmpdir(), 'Other thread', '2026-06-03T12:00:00.000Z');
+    const managed = context.hub.adoptCodexThread({ threadId: 'thread-managed', cwd: process.cwd() });
+
+    const response = await context.app.request(
+      `/api/codex/sessions?cwd=${encodeURIComponent(process.cwd())}`,
+      { headers: authHeaders(context.config) },
+    );
+    const body = await json<{
+      cwd: string;
+      sessions: Array<{ id: string; title: string; managedSessionId: string | null }>;
+    }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.cwd, process.cwd());
+    assert.deepEqual(body.sessions.map((session) => session.id), ['thread-managed', 'thread-free']);
+    assert.equal(body.sessions[0]?.title, 'Managed thread');
+    assert.equal(body.sessions[0]?.managedSessionId, managed.id);
+    assert.equal(body.sessions[1]?.managedSessionId, null);
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
   }
 });
 
@@ -454,3 +487,25 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     await closeTestHub(context);
   }
 });
+
+function writeCodexSession(codexHome: string, id: string, cwd: string, title: string, timestamp: string): void {
+  mkdirSync(join(codexHome, 'sessions', '2026', '06', '03'), { recursive: true });
+  writeFileSync(join(codexHome, 'session_index.jsonl'), [
+    JSON.stringify({ id, thread_name: title, updated_at: timestamp }),
+    '',
+  ].join('\n'), { flag: 'a' });
+  writeFileSync(join(codexHome, 'sessions', '2026', '06', '03', `rollout-${id}.jsonl`), [
+    JSON.stringify({
+      timestamp,
+      type: 'session_meta',
+      payload: {
+        id,
+        timestamp,
+        cwd,
+        originator: 'codex-tui',
+        thread_source: 'local',
+      },
+    }),
+    '',
+  ].join('\n'));
+}

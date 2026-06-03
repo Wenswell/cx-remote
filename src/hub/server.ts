@@ -8,7 +8,8 @@ import { serve, type ServerType } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { z } from 'zod';
 import { resolveCodexRuntimeDefaults } from '../agents/codex/defaults.js';
-import { getSettingValue, isPathInside, listSettingFields, maskSettings, setSettingValue, type AppConfig } from '../config/config.js';
+import { listCodexResumeSessions } from '../agents/codex/sessions.js';
+import { getSettingValue, isPathInside, listSettingFields, maskSettings, resolveWorkspacePath, setSettingValue, type AppConfig } from '../config/config.js';
 import { findSettingField } from '../config/fields.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 import type { PromptJobStatus } from '../domain/types.js';
@@ -50,6 +51,11 @@ const updateSessionConfigSchema = z.object({
   config: sessionConfigSchema(),
 });
 
+const codexSessionsQuerySchema = z.object({
+  cwd: z.string().min(1),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
 const resolveApprovalSchema = z.object({
   decision: z.string().min(1),
   controlType: controlTypeSchema.default('web'),
@@ -83,6 +89,7 @@ function sessionConfigSchema() {
 
 export type HubServerOptions = {
   webDistDir?: string;
+  codexHome?: string;
 };
 
 export class HubServer {
@@ -207,6 +214,28 @@ export class HubServer {
         parentPath: rel ? relative(root, resolve(current, '..')) : '',
         entries,
       });
+    });
+
+    app.get('/api/codex/sessions', (c) => {
+      const input = codexSessionsQuerySchema.parse({
+        cwd: c.req.query('cwd'),
+        limit: c.req.query('limit'),
+      });
+      const cwd = resolveWorkspacePath(this.config, input.cwd);
+      const managedSessionByThread = new Map(
+        this.hub.listSessions()
+          .filter((session) => session.codexThreadId)
+          .map((session) => [session.codexThreadId!, session.id]),
+      );
+      const sessions = listCodexResumeSessions({
+        cwd,
+        limit: input.limit,
+        codexHome: this.options.codexHome,
+      }).map((session) => ({
+        ...session,
+        managedSessionId: managedSessionByThread.get(session.id) || null,
+      }));
+      return c.json({ cwd, sessions });
     });
 
     app.get('/api/settings', (c) => c.json({

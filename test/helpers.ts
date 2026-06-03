@@ -25,6 +25,10 @@ export type TestApp = TestHub & {
   app: Hono;
 };
 
+type TestAppOptions = {
+  codexHome?: string;
+};
+
 export function createTestHub(): TestHub {
   const dbPath = tempDbPath();
   const webDistDir = tempWebDistDir();
@@ -36,9 +40,9 @@ export function createTestHub(): TestHub {
   return { dbPath, webDistDir, store, config, events, permissions, hub };
 }
 
-export function createTestApp(): TestApp {
+export function createTestApp(options: TestAppOptions = {}): TestApp {
   const context = createTestHub();
-  return { ...context, app: new HubServer(context.hub, context.config, { webDistDir: context.webDistDir }).createApp() };
+  return { ...context, app: new HubServer(context.hub, context.config, { webDistDir: context.webDistDir, codexHome: options.codexHome }).createApp() };
 }
 
 export async function closeTestHub(context: TestHub): Promise<void> {

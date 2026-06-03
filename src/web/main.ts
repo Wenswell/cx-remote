@@ -80,6 +80,22 @@ type DirectoryListing = {
   entries: DirectoryEntry[];
 };
 
+type CodexResumeSession = {
+  id: string;
+  title: string;
+  cwd: string;
+  createdAt: string;
+  updatedAt: string;
+  originator: string;
+  threadSource: string;
+  managedSessionId: string | null;
+};
+
+type CodexResumeSessionsResponse = {
+  cwd: string;
+  sessions: CodexResumeSession[];
+};
+
 type SessionDetail = {
   session: Session;
   messages: Message[];
@@ -165,6 +181,7 @@ const apiPath = {
   workspaces: '/api/workspaces',
   sessions: '/api/sessions',
   adoptSession: '/api/sessions/adopt',
+  codexSessions: (cwd: string) => `/api/codex/sessions?cwd=${encodeURIComponent(cwd)}&limit=100`,
   files: (root: string, path: string) => `/api/files?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`,
   session: (id: string, suffix = '') => `/api/sessions/${encodeURIComponent(id)}${suffix}`,
   approvals: (sessionId: string) => `/api/approvals?sessionId=${encodeURIComponent(sessionId)}&status=all&limit=50`,
@@ -180,6 +197,7 @@ const apiPath = {
 
 let activeSessionId = localStorage.getItem('cx_tg_session') || '';
 let sessions: Session[] = [];
+let adoptSessions: CodexResumeSession[] = [];
 let messages: Message[] = [];
 let pendingApprovals: Approval[] = [];
 let approvalHistory: Approval[] = [];
@@ -206,6 +224,7 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 element('refresh-icon').setAttribute('src', refreshIconUrl);
+element('refresh-adopt-sessions-icon').setAttribute('src', refreshIconUrl);
 
 async function ensureAuth(): Promise<void> {
   const current = await fetch(apiPath.status, { credentials: 'same-origin' });
@@ -316,6 +335,7 @@ async function loadDirs(path: string): Promise<void> {
   element<ValueElement>('cwd').value = data.current;
   element<ValueElement>('adopt-cwd').value = data.current;
   renderDirs(data);
+  await loadAdoptSessions(data.current);
 }
 
 function renderDirs(data: DirectoryListing): void {
@@ -336,6 +356,87 @@ function renderDirs(data: DirectoryListing): void {
     }));
   }
   if (!box.childElementCount) box.appendChild(emptyState('No child directories'));
+}
+
+async function loadAdoptSessions(cwd = element<ValueElement>('adopt-cwd').value.trim()): Promise<void> {
+  if (!cwd) {
+    adoptSessions = [];
+    renderAdoptSessions();
+    return;
+  }
+
+  const select = element<ConfigValueElement>('adopt-session-id');
+  select.disabled = true;
+  element('adopt-session-meta').textContent = 'Loading sessions';
+  try {
+    const data = await api<CodexResumeSessionsResponse>(apiPath.codexSessions(cwd));
+    if (element<ValueElement>('adopt-cwd').value.trim() !== data.cwd) return;
+    adoptSessions = data.sessions;
+    renderAdoptSessions();
+  } finally {
+    select.disabled = false;
+  }
+}
+
+function renderAdoptSessions(): void {
+  const select = element<ConfigValueElement>('adopt-session-id');
+  select.innerHTML = '';
+
+  for (const session of adoptSessions) {
+    const option = document.createElement('sl-option');
+    option.setAttribute('value', session.id);
+    if (session.managedSessionId) option.setAttribute('disabled', '');
+    option.textContent = formatCodexSessionOption(session);
+    select.appendChild(option);
+  }
+
+  const selected = adoptSessions.find((session) => !session.managedSessionId);
+  select.value = selected?.id || '';
+  renderSelectedAdoptSession();
+}
+
+function renderSelectedAdoptSession(): void {
+  const session = selectedAdoptSession();
+  const meta = element('adopt-session-meta');
+  if (!adoptSessions.length) {
+    meta.textContent = 'No Codex sessions for this directory';
+    element<ValueElement>('adopt-title').value = '';
+    return;
+  }
+  if (!session) {
+    meta.textContent = 'All Codex sessions for this directory are already managed';
+    element<ValueElement>('adopt-title').value = '';
+    return;
+  }
+
+  meta.textContent = [
+    `Updated ${formatDateTime(session.updatedAt)}`,
+    shortId(session.id),
+    session.originator || '',
+    session.threadSource || '',
+  ].filter(Boolean).join(' · ');
+  element<ValueElement>('adopt-title').value = session.title;
+}
+
+function selectedAdoptSession(): CodexResumeSession | undefined {
+  const id = element<ConfigValueElement>('adopt-session-id').value;
+  return adoptSessions.find((session) => session.id === id && !session.managedSessionId);
+}
+
+function formatCodexSessionOption(session: CodexResumeSession): string {
+  const parts = [
+    formatDateTime(session.updatedAt),
+    truncateText(session.title, 72),
+    shortId(session.id),
+  ];
+  if (session.managedSessionId) parts.push(`managed ${shortId(session.managedSessionId)}`);
+  return parts.filter(Boolean).join(' · ');
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 async function loadSession(): Promise<void> {
@@ -909,6 +1010,8 @@ element<ValueElement>('workspace-root').addEventListener('sl-change', (event) =>
 });
 element('root-dir').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadDirs('')));
 element('refresh').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, loadAll));
+element('refresh-adopt-sessions').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, () => loadAdoptSessions()));
+element('adopt-session-id').addEventListener('sl-change', () => renderSelectedAdoptSession());
 element('claim').addEventListener('click', (event) => runAction(event.currentTarget as HTMLElement, async () => {
   if (!currentSession) return;
   await api(apiPath.session(currentSession.id, '/control'), {
@@ -978,7 +1081,9 @@ element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => 
   event.preventDefault();
   const formElement = event.currentTarget as HTMLFormElement;
   runAction(submitButton(formElement), async () => {
-    const threadId = element<ValueElement>('adopt-thread-id').value.trim();
+    const selected = selectedAdoptSession();
+    if (!selected) throw new Error('Select a Codex session');
+    const threadId = selected.id;
     const cwd = element<ValueElement>('adopt-cwd').value.trim();
     const title = element<ValueElement>('adopt-title').value.trim();
     const session = await api<Session>(apiPath.adoptSession, {
@@ -989,6 +1094,7 @@ element<HTMLFormElement>('adopt-session').addEventListener('submit', (event) => 
     localStorage.setItem('cx_tg_session', activeSessionId);
     formElement.reset();
     element<ValueElement>('adopt-cwd').value = element<ValueElement>('cwd').value;
+    await loadAdoptSessions();
     await loadAll();
   });
 });

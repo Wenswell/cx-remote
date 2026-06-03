@@ -63,9 +63,16 @@
             </sl-button>
           </form>
           <form id="adopt-session" class="stack">
-            <strong>Adopt Codex thread</strong>
-            <sl-input id="adopt-thread-id" name="threadId" placeholder="Codex thread ID" required size="small"></sl-input>
-            <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required size="small"></sl-input>
+            <strong>Adopt Codex session</strong>
+            <div class="row">
+              <sl-input id="adopt-cwd" name="cwd" placeholder="Working directory" required readonly size="small"></sl-input>
+              <sl-button id="refresh-adopt-sessions" type="button" size="small">
+                <sl-icon id="refresh-adopt-sessions-icon" slot="prefix"></sl-icon>
+                Refresh
+              </sl-button>
+            </div>
+            <sl-select id="adopt-session-id" label="Codex session" placeholder="Select Codex session" required size="small"></sl-select>
+            <div id="adopt-session-meta" class="details muted"></div>
             <sl-input id="adopt-title" name="title" placeholder="Title optional" size="small"></sl-input>
             <sl-details class="runtime-details" summary="Runtime">
               <div class="runtime-controls">
@@ -91,7 +98,7 @@
             </sl-details>
             <sl-button variant="primary" type="submit">
               <sl-icon slot="prefix" library="system" name="play-fill"></sl-icon>
-              Adopt thread
+              Adopt session
             </sl-button>
           </form>
         </div>
