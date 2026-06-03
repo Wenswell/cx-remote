@@ -458,7 +458,7 @@ export class HubServer {
     app.use(route('/assets/*'), webAuthMiddleware(this.config.server.accessToken, this.config.server.publicUrl, basePath));
     app.use(basePath ? route('/*') : '*', async (c, next) => {
       const path = stripBasePath(c.req.path, basePath);
-      if (path.startsWith('/api/') || c.req.method !== 'GET' || !acceptsHtml(c.req.header('accept'))) {
+      if (!isWebPageRequest(path, c.req.method, c.req.header('accept'))) {
         await next();
         return;
       }
@@ -552,6 +552,12 @@ function routeParam(c: Context, name: string): string {
 
 function acceptsHtml(accept: string | undefined): boolean {
   return Boolean(accept?.includes('text/html'));
+}
+
+function isWebPageRequest(path: string, method: string, accept: string | undefined): boolean {
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  if (path.startsWith('/api/') || path.startsWith('/assets/')) return false;
+  return path === '/' || acceptsHtml(accept);
 }
 
 function isAuthorizedRequest(authorization: string | undefined, cookie: string | undefined, token: string): boolean {

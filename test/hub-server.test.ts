@@ -657,7 +657,10 @@ test('web static routes serve Vite assets and keep API JSON boundaries', async (
     const blockedPage = await context.app.request('/', { headers: { Accept: 'text/html' } });
     assert.equal(blockedPage.status, 401);
 
-    const login = await context.app.request(`/?token=${encodeURIComponent(context.config.server.accessToken)}`, { headers: { Accept: 'text/html' } });
+    const blockedPlainPage = await context.app.request('/');
+    assert.equal(blockedPlainPage.status, 401);
+
+    const login = await context.app.request(`/?token=${encodeURIComponent(context.config.server.accessToken)}`);
     const cookie = login.headers.get('set-cookie') || '';
     assert.equal(login.status, 302);
     assert.equal(login.headers.get('location'), '/');
@@ -718,6 +721,9 @@ test('web, API, and event routes mount below publicUrl path', async () => {
 
     const blockedPage = await context.app.request('/apps/cx-tg/', { headers: { Accept: 'text/html' } });
     assert.equal(blockedPage.status, 401);
+
+    const blockedPlainPage = await context.app.request('/apps/cx-tg/');
+    assert.equal(blockedPlainPage.status, 401);
 
     const redirect = await context.app.request(`/apps/cx-tg?token=${encodeURIComponent(context.config.server.accessToken)}`);
     assert.equal(redirect.status, 302);
