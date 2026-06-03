@@ -184,6 +184,8 @@ https://gateway.1662803.xyz/apps/cx-tg
 
 Caddy matches `/apps/cx-tg` and `/apps/cx-tg/*`, then proxies to the gateway Hub while preserving the path prefix. The cx-tg route uses Hub token auth. The gateway Hub has `server.publicUrl=https://gateway.1662803.xyz/apps/cx-tg` and `cluster.peers` entries for the peer LAN URLs.
 
+The gateway Hub sets `workspace.roots=[]` because it is a pure aggregator. Web workspace selection comes from peer Hubs only; the gateway server is not a Codex work node.
+
 ## Control Ownership
 
 Control ownership is stored on `Session`:

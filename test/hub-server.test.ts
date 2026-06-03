@@ -268,6 +268,54 @@ test('aggregated workspaces and sessions include remote nodes', async () => {
   }
 });
 
+test('central node can proxy peers without local workspaces', async () => {
+  const remote = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Remote node';
+      config.server.accessToken = 'remote-access-token';
+    },
+  });
+  const central = createTestApp({
+    configure: (config) => {
+      config.workspace.roots = [];
+      config.cluster.peers = [{
+        id: 'remote1',
+        name: 'Remote node',
+        url: 'http://remote.test',
+        accessToken: 'remote-access-token',
+      }];
+    },
+    fetchImpl: appFetch({ 'http://remote.test': remote.app }),
+  });
+
+  try {
+    const status = await json<{
+      nodes: Array<{ id: string; workspaceRoots: string[] }>;
+      workspaceRoots: string[];
+    }>(await central.app.request('/api/status', { headers: authHeaders(central.config) }));
+    assert.deepEqual(status.nodes.find((node) => node.id === 'local')?.workspaceRoots, []);
+    assert.equal(status.workspaceRoots.includes(process.cwd()), true);
+
+    const workspaces = await json<Array<{ nodeId: string; path: string }>>(await central.app.request(
+      '/api/workspaces',
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(workspaces.some((workspace) => workspace.nodeId === 'local'), false);
+    assert.equal(workspaces.some((workspace) => workspace.nodeId === 'remote1' && workspace.path === process.cwd()), true);
+
+    const localCreate = await central.app.request('/api/sessions', {
+      method: 'POST',
+      headers: jsonHeaders(central.config),
+      body: JSON.stringify({ cwd: process.cwd(), title: 'Local create should fail' }),
+    });
+    assert.equal(localCreate.status, 400);
+    assert.match(await localCreate.text(), /workspace\.roots is empty/);
+  } finally {
+    await closeTestHub(central);
+    await closeTestHub(remote);
+  }
+});
+
 test('session detail and create APIs proxy remote nodes', async () => {
   const remote = createTestApp({
     configure: (config) => {

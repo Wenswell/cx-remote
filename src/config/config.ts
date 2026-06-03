@@ -30,7 +30,7 @@ export const settingsSchema = z.object({
     peers: z.array(clusterPeerSchema).default([]),
   }),
   workspace: z.object({
-    roots: z.array(z.string().min(1)).min(1),
+    roots: z.array(z.string().min(1)),
   }),
   agents: z.object({
     default: z.literal('codex').default('codex'),
@@ -324,6 +324,7 @@ export function expandHome(input: string): string {
 export function resolveWorkspacePath(config: Pick<AppConfig, 'workspace'>, input: string): string {
   const raw = expandHome(input);
   const roots = config.workspace.roots.map((root) => resolve(root));
+  if (roots.length === 0) throw new Error('workspace.roots is empty on this Hub node');
   const candidate = resolve(raw);
   if (roots.some((root) => isPathInside(root, candidate))) return candidate;
 

@@ -128,7 +128,7 @@ The Web page is served at `/apps/cx-tg/`, assets at `/apps/cx-tg/assets/*`, and 
     ]
   },
   "workspace": {
-    "roots": ["/home/ilove/Documents/repos"]
+    "roots": []
   },
   "agents": {
     "default": "codex",
@@ -179,15 +179,19 @@ cx-tg config set cluster.name gateway
 cx-tg config set server.host 127.0.0.1
 cx-tg config set server.port 3030
 cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
+cx-tg config set workspace.roots '[]'
 cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
 ```
 
-Each peer node keeps `cluster.peers` empty and listens on the EasyTier LAN:
+`workspace.roots=[]` makes the gateway Hub a pure aggregator. It proxies peer workspaces, sessions, approvals, and events while keeping the gateway server out of Web workspace selection.
+
+Each peer node keeps `cluster.peers` empty, sets its own workspace roots, and listens on the EasyTier LAN:
 
 ```bash
 cx-tg config set server.host 0.0.0.0
 cx-tg config set server.port 3030
 cx-tg config set cluster.peers '[]'
+cx-tg config set workspace.roots /path/to/repos
 ```
 
 ## Web Settings API

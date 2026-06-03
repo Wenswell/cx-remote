@@ -622,6 +622,7 @@ function errorMessage(error: unknown): string {
 }
 
 function workspaceRoot(roots: string[], input: string | undefined): string {
+  if (roots.length === 0) throw new Error('workspace.roots is empty on this Hub node');
   if (!input) return roots[0]!;
   const root = roots.find((item) => item === input || item === resolve(input));
   if (!root) throw new Error('Unknown workspace root');

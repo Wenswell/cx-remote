@@ -177,10 +177,12 @@ cx-tg config set server.host 127.0.0.1
 cx-tg config set server.port 3030
 cx-tg config set server.publicUrl https://gateway.1662803.xyz/apps/cx-tg
 cx-tg config set server.accessToken '<central-token>'
-cx-tg config set workspace.roots /home/ravvss
+cx-tg config set workspace.roots '[]'
 cx-tg config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
 cx-tg hub
 ```
+
+`workspace.roots=[]` makes the gateway Hub a pure aggregator. Web will show peer workspaces and sessions, while the gateway server stays out of workspace selection.
 
 Peer Hub on `10.126.126.2`:
 
