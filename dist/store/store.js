@@ -1,5 +1,5 @@
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 export class Store {
     dbPath;
@@ -59,6 +59,90 @@ export class Store {
             ? this.db.prepare('SELECT * FROM sessions ORDER BY updatedAt DESC').all()
             : this.db.prepare('SELECT * FROM sessions WHERE cwd = ? ORDER BY updatedAt DESC').all(cwd);
         return rows.map(decodeSession);
+    }
+    upsertCodexSession(session) {
+        const codexHome = resolve(session.codexHome);
+        const filePath = resolve(session.filePath);
+        this.db.prepare(`
+      DELETE FROM codex_sessions
+      WHERE codexHome = ? AND filePath = ? AND threadId <> ?
+    `).run(codexHome, filePath, session.threadId);
+        this.db.prepare(`
+      INSERT INTO codex_sessions (
+        codexHome, threadId, cwdKey, cwd, filePath, title,
+        createdAt, updatedAt, originator, threadSource
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(codexHome, threadId) DO UPDATE SET
+        cwdKey = excluded.cwdKey,
+        cwd = excluded.cwd,
+        filePath = excluded.filePath,
+        title = excluded.title,
+        createdAt = excluded.createdAt,
+        updatedAt = excluded.updatedAt,
+        originator = excluded.originator,
+        threadSource = excluded.threadSource
+    `).run(codexHome, session.threadId, session.cwdKey, session.cwd, filePath, session.title, session.createdAt, session.updatedAt, session.originator, session.threadSource);
+    }
+    replaceCodexSessions(codexHome, sessions) {
+        const resolvedHome = resolve(codexHome);
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+            this.db.prepare('DELETE FROM codex_sessions WHERE codexHome = ?').run(resolvedHome);
+            for (const session of sessions)
+                this.upsertCodexSession({ ...session, codexHome: resolvedHome });
+            this.db.exec('COMMIT');
+        }
+        catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
+    }
+    listCodexSessions(codexHome, cwdKey, limit) {
+        const rows = this.db.prepare(`
+      SELECT * FROM codex_sessions
+      WHERE codexHome = ? AND cwdKey = ?
+      ORDER BY updatedAt DESC, createdAt DESC, threadId ASC
+      LIMIT ?
+    `).all(resolve(codexHome), cwdKey, normalizeLimit(limit, 100));
+        return rows.map(decodeCodexSession);
+    }
+    getCodexSession(codexHome, threadId) {
+        const row = this.db.prepare(`
+      SELECT * FROM codex_sessions
+      WHERE codexHome = ? AND threadId = ?
+    `).get(resolve(codexHome), threadId);
+        return row ? decodeCodexSession(row) : null;
+    }
+    deleteCodexSessionByFilePath(codexHome, filePath) {
+        const result = this.db.prepare(`
+      DELETE FROM codex_sessions
+      WHERE codexHome = ? AND filePath = ?
+    `).run(resolve(codexHome), resolve(filePath));
+        return result.changes > 0;
+    }
+    syncCodexSessionTitles(codexHome, index) {
+        const update = this.db.prepare(`
+      UPDATE codex_sessions SET
+        title = CASE WHEN ? <> '' THEN ? ELSE title END,
+        updatedAt = CASE WHEN ? <> '' THEN ? ELSE updatedAt END
+      WHERE codexHome = ? AND threadId = ?
+    `);
+        const resolvedHome = resolve(codexHome);
+        this.db.exec('BEGIN IMMEDIATE');
+        try {
+            for (const [threadId, entry] of index) {
+                const title = entry.threadName.trim();
+                const updatedAt = entry.updatedAt.trim();
+                if (!title && !updatedAt)
+                    continue;
+                update.run(title, title, updatedAt, updatedAt, resolvedHome, threadId);
+            }
+            this.db.exec('COMMIT');
+        }
+        catch (error) {
+            this.db.exec('ROLLBACK');
+            throw error;
+        }
     }
     createMessage(message) {
         this.db.prepare(`
@@ -359,6 +443,26 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_sessions_cwd_updated
         ON sessions(cwd, updatedAt DESC);
 
+      CREATE TABLE IF NOT EXISTS codex_sessions (
+        codexHome TEXT NOT NULL,
+        threadId TEXT NOT NULL,
+        cwdKey TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        filePath TEXT NOT NULL,
+        title TEXT NOT NULL,
+        createdAt TEXT NOT NULL,
+        updatedAt TEXT NOT NULL,
+        originator TEXT NOT NULL,
+        threadSource TEXT NOT NULL,
+        PRIMARY KEY(codexHome, threadId)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_codex_sessions_home_cwd_updated
+        ON codex_sessions(codexHome, cwdKey, updatedAt DESC, createdAt DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_codex_sessions_home_file
+        ON codex_sessions(codexHome, filePath);
+
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -485,6 +589,12 @@ function decodeSession(row) {
         controlLeaseExpiresAt: row.controlLeaseExpiresAt ?? null,
         controlUpdatedAt: row.controlUpdatedAt ?? null,
         config: JSON.parse(config_json),
+    };
+}
+function decodeCodexSession(row) {
+    return {
+        ...row,
+        id: row.threadId,
     };
 }
 function decodeMessage(row) {

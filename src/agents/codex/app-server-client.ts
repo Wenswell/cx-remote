@@ -92,7 +92,7 @@ export class CodexAppServerClient {
       clientInfo: {
         name: 'cx-remote',
         title: 'CX Remote',
-        version: '0.1.2',
+        version: '0.1.3',
       },
       capabilities: { experimentalApi: true, requestAttestation: false },
     }, 30_000);

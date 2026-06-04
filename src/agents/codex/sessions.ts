@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -29,6 +29,13 @@ export interface CodexSessionPreview extends CodexResumeSession {
   messages: CodexTranscriptMessage[];
 }
 
+export interface CodexSessionRecord extends CodexResumeSession {
+  codexHome: string;
+  cwdKey: string;
+  filePath: string;
+  threadId: string;
+}
+
 export interface ListCodexResumeSessionsOptions {
   cwd: string;
   codexHome?: string;
@@ -53,36 +60,63 @@ export function defaultCodexHome(): string {
   return resolve(process.env.CODEX_HOME || join(homedir(), '.codex'));
 }
 
+export function resolveCodexCwdKey(cwd: string): string {
+  return realpathSync(resolve(cwd));
+}
+
+export function loadCodexSessionIndex(codexHome: string): Map<string, SessionIndexEntry> {
+  return readSessionIndex(join(resolve(codexHome), 'session_index.jsonl'));
+}
+
+export function listCodexSessionFiles(codexHome: string): string[] {
+  return listCodexSessionFilesUnder(join(resolve(codexHome), 'sessions'));
+}
+
+export function listCodexSessionFilesUnder(root: string): string[] {
+  const resolvedRoot = resolve(root);
+  return existsSync(resolvedRoot) ? [...listJsonlFiles(resolvedRoot)] : [];
+}
+
+export function readCodexSessionRecord(filePath: string, index: Map<string, SessionIndexEntry>, codexHome = defaultCodexHome()): CodexSessionRecord | null {
+  const session = readSessionMeta(filePath, index);
+  if (!session) return null;
+  const cwdKey = codexCwdKeyOrNull(session.cwd);
+  if (!cwdKey) return null;
+  const resolvedFilePath = resolve(filePath);
+  return {
+    ...session,
+    codexHome: resolve(codexHome),
+    cwdKey,
+    filePath: resolvedFilePath,
+    threadId: session.id,
+  };
+}
+
+export function scanCodexSessionRecords(codexHome: string): CodexSessionRecord[] {
+  const resolvedHome = resolve(codexHome);
+  const index = loadCodexSessionIndex(resolvedHome);
+  return listCodexSessionFiles(resolvedHome)
+    .map((filePath) => readCodexSessionRecord(filePath, index, resolvedHome))
+    .filter((session): session is CodexSessionRecord => session !== null);
+}
+
 export function listCodexResumeSessions(options: ListCodexResumeSessionsOptions): CodexResumeSession[] {
   const codexHome = resolve(options.codexHome || defaultCodexHome());
-  const sessionsDir = join(codexHome, 'sessions');
-  const targetCwd = resolve(options.cwd);
+  const targetCwd = resolveCodexCwdKey(options.cwd);
   const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-  if (!existsSync(sessionsDir)) return [];
-
-  const index = readSessionIndex(join(codexHome, 'session_index.jsonl'));
-  const sessions: CodexResumeSession[] = [];
-  for (const filePath of listJsonlFiles(sessionsDir)) {
-    const session = readSessionMeta(filePath, index);
-    if (session && resolve(session.cwd) === targetCwd) sessions.push(session);
-  }
-
-  return sessions
+  return scanCodexSessionRecords(codexHome)
+    .filter((session) => session.cwdKey === targetCwd)
+    .map(stripCodexSessionRecord)
     .sort((left, right) => sessionTime(right).localeCompare(sessionTime(left)))
     .slice(0, limit);
 }
 
 export function readCodexSessionTranscript(options: { threadId: string; codexHome?: string }): CodexSessionTranscript | null {
   const codexHome = resolve(options.codexHome || defaultCodexHome());
-  const index = readSessionIndex(join(codexHome, 'session_index.jsonl'));
+  const index = loadCodexSessionIndex(codexHome);
   const filePath = findSessionFilePath(join(codexHome, 'sessions'), options.threadId.trim());
   if (!filePath) return null;
-  const session = readSessionMeta(filePath, index);
-  if (!session) return null;
-  return {
-    session,
-    messages: readTranscriptMessages(filePath),
-  };
+  return readCodexSessionTranscriptFromFile(filePath, index, codexHome);
 }
 
 export function readCodexSessionPreview(options: {
@@ -92,15 +126,32 @@ export function readCodexSessionPreview(options: {
 }): CodexSessionPreview | null {
   const transcript = readCodexSessionTranscript(options);
   if (!transcript) return null;
-  const limit = Math.max(Math.trunc(options.messageLimit ?? DEFAULT_PREVIEW_MESSAGE_LIMIT), 0);
+  return buildPreview(transcript, options.messageLimit ?? DEFAULT_PREVIEW_MESSAGE_LIMIT);
+}
+
+export function readCodexSessionTranscriptFromFile(
+  filePath: string,
+  indexOrCodexHome?: Map<string, SessionIndexEntry> | string,
+  codexHome = defaultCodexHome(),
+): CodexSessionTranscript | null {
+  const index = indexOrCodexHome instanceof Map ? indexOrCodexHome : loadCodexSessionIndex(indexOrCodexHome || codexHome);
+  const session = readSessionMeta(filePath, index);
+  if (!session) return null;
   return {
-    ...transcript.session,
-    messageCount: transcript.messages.length,
-    messages: transcript.messages.slice(0, limit).map((message) => ({
-      ...message,
-      content: truncatePreviewContent(message.content),
-    })),
+    session,
+    messages: readTranscriptMessages(filePath),
   };
+}
+
+export function readCodexSessionPreviewFromFile(
+  filePath: string,
+  indexOrCodexHome?: Map<string, SessionIndexEntry> | string,
+  codexHome = defaultCodexHome(),
+  messageLimit = DEFAULT_PREVIEW_MESSAGE_LIMIT,
+): CodexSessionPreview | null {
+  const transcript = readCodexSessionTranscriptFromFile(filePath, indexOrCodexHome, codexHome);
+  if (!transcript) return null;
+  return buildPreview(transcript, messageLimit);
 }
 
 export function readCodexTranscript(options: { threadId: string; codexHome?: string }): CodexTranscriptMessage[] {
@@ -213,6 +264,31 @@ function readSessionMeta(filePath: string, index: Map<string, SessionIndexEntry>
     updatedAt,
     originator: stringValue(payload.originator) || '',
     threadSource: stringValue(payload.thread_source) || '',
+  };
+}
+
+function stripCodexSessionRecord(session: CodexSessionRecord): CodexResumeSession {
+  const { codexHome: _codexHome, cwdKey: _cwdKey, filePath: _filePath, threadId: _threadId, ...rest } = session;
+  return rest;
+}
+
+function codexCwdKeyOrNull(cwd: string): string | null {
+  try {
+    return resolveCodexCwdKey(cwd);
+  } catch {
+    return null;
+  }
+}
+
+function buildPreview(transcript: CodexSessionTranscript, messageLimit: number): CodexSessionPreview {
+  const limit = Math.max(Math.trunc(messageLimit), 0);
+  return {
+    ...transcript.session,
+    messageCount: transcript.messages.length,
+    messages: transcript.messages.slice(0, limit).map((message) => ({
+      ...message,
+      content: truncatePreviewContent(message.content),
+    })),
   };
 }
 

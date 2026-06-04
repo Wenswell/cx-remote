@@ -49,6 +49,7 @@ src/cli.ts        terminal CLI client
 | `Approval` | pending and resolved Codex approvals or choice requests |
 | `ControlBinding` | maps a Web/Telegram/CLI control context to a session |
 | `HubEvent` | persisted event stream for Web and Telegram updates |
+| `CodexSession` | indexed native Codex resume session with cwd key, file path, title, and timestamps |
 
 ## Control Flow
 
@@ -159,8 +160,8 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_re
 `GET /api/workspaces` returns local and remote workspace roots with `nodeId`, `nodeName`, `homePath`, and a stable `workspaceId`.
 `GET /api/files?workspaceId=<id>&path=<rel>` browses one workspace root, local or remote.
 `GET /api/sessions?nodeId=<node>&cwd=<path>` lists Hub-managed sessions for one node directory, ordered by Hub session `updatedAt`. Without `cwd`, `GET /api/sessions` lists recent sessions across all reachable nodes.
-`GET /api/codex/sessions?nodeId=<node>&cwd=<path>` lists Codex resume sessions recorded for one node directory. Results include thread title, timestamps, origin, node metadata, and the Hub session id when that Codex session is already managed.
-`GET /api/codex/sessions/:threadId/preview?nodeId=<node>` returns a small transcript preview for one Codex session, including message count, sampled user/assistant messages, and the Hub session id when already managed.
+`GET /api/codex/sessions?nodeId=<node>&cwd=<path>` lists Codex resume sessions recorded for one node directory from that node's SQLite index. Results include thread title, timestamps, origin, node metadata, and the Hub session id when that Codex session is already managed.
+`GET /api/codex/sessions/:threadId/preview?nodeId=<node>` resolves the thread id through the same index, then reads only that `.jsonl` transcript for a small sample with message count and the Hub session id when already managed.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Remote sessions use namespaced ids like `laptop::550e8400-e29b-41d4-a716-446655440000`.
 `POST /api/sessions` and `POST /api/sessions/adopt` accept optional `nodeId` plus optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
 `POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, the owning Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` stays unique per node Hub store.

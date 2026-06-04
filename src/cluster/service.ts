@@ -19,6 +19,7 @@ import { decodeSseFrame } from '../runtime/sse.js';
 import type { ControlHub } from '../runtime/control-hub.js';
 import type { EventBus } from '../runtime/event-bus.js';
 import { logger } from '../logger.js';
+import { CodexSessionCatalog } from '../agents/codex/catalog.js';
 
 export const LOCAL_NODE_ID = 'local';
 
@@ -205,6 +206,7 @@ type ControlLeaseInput = {
 
 export class ClusterService {
   private readonly peers = new Map<string, PeerRuntime>();
+  private readonly codexCatalog: CodexSessionCatalog;
   private running = false;
 
   constructor(
@@ -214,6 +216,7 @@ export class ClusterService {
     private readonly codexHome?: string,
     fetchImpl: FetchImpl = fetch,
   ) {
+    this.codexCatalog = new CodexSessionCatalog(this.hub.store, codexHome);
     for (const peer of config.cluster.peers) {
       this.peers.set(peer.id, {
         config: peer,
@@ -232,6 +235,7 @@ export class ClusterService {
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
+    if (this.config.workspace.roots.length > 0) await this.codexCatalog.ensureReady();
     for (const peer of this.peers.values()) {
       peer.watchPromise = this.watchPeer(peer);
     }
@@ -247,6 +251,7 @@ export class ClusterService {
       peer.controller = null;
       peer.watchPromise = null;
     }
+    await this.codexCatalog.stop();
   }
 
   async listNodes(localOnly = false): Promise<NodeStatusView[]> {
@@ -656,13 +661,13 @@ export class ClusterService {
   }
 
   private async localCodexSessions(cwd: string, limit?: number): Promise<CodexSessionView[]> {
-    const local = await import('../agents/codex/sessions.js');
     const managedSessionByThread = new Map(
       this.hub.listSessions()
         .filter((session) => session.codexThreadId)
         .map((session) => [session.codexThreadId!, session.id]),
     );
-    return local.listCodexResumeSessions({ cwd: resolve(cwd), limit, codexHome: this.codexHome }).map((session) => {
+    const sessions = await this.codexCatalog.listResumeSessions({ cwd: resolve(cwd), limit });
+    return sessions.map((session) => {
       return this.decorateCodexSession(this.localNodeDescriptor(), {
         ...session,
         managedSessionId: managedSessionByThread.get(session.id) || null,
@@ -671,8 +676,7 @@ export class ClusterService {
   }
 
   private async localCodexPreview(threadId: string): Promise<CodexPreviewView> {
-    const local = await import('../agents/codex/sessions.js');
-    const preview = local.readCodexSessionPreview({ threadId, codexHome: this.codexHome });
+    const preview = await this.codexCatalog.readSessionPreview({ threadId });
     if (!preview) throw new Error(`Codex thread not found: ${threadId}`);
     const managed = this.hub.listSessions().find((session) => session.codexThreadId === threadId);
     return this.decorateCodexPreview(this.localNodeDescriptor(), {

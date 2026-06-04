@@ -23,6 +23,7 @@ export type TestHub = {
 
 export type TestApp = TestHub & {
   app: Hono;
+  server: HubServer;
 };
 
 type TestAppOptions = {
@@ -45,17 +46,20 @@ export function createTestHub(): TestHub {
 export function createTestApp(options: TestAppOptions = {}): TestApp {
   const context = createTestHub();
   options.configure?.(context.config);
+  const server = new HubServer(context.hub, context.config, {
+    webDistDir: context.webDistDir,
+    codexHome: options.codexHome,
+    fetchImpl: options.fetchImpl,
+  });
   return {
     ...context,
-    app: new HubServer(context.hub, context.config, {
-      webDistDir: context.webDistDir,
-      codexHome: options.codexHome,
-      fetchImpl: options.fetchImpl,
-    }).createApp(),
+    server,
+    app: server.createApp(),
   };
 }
 
 export async function closeTestHub(context: TestHub): Promise<void> {
+  await (context as Partial<TestApp>).server?.stop();
   await context.hub.shutdown();
   context.store.close();
   cleanupDb(context.dbPath);

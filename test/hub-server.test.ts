@@ -349,6 +349,74 @@ test('central node can proxy peers without local workspaces', async () => {
   }
 });
 
+test('central node proxies remote Codex session index and preview', async () => {
+  const remoteCodexHome = mkdtempSync(join(tmpdir(), 'cx-remote-remote-codex-home-'));
+  const remote = createTestApp({
+    codexHome: remoteCodexHome,
+    configure: (config) => {
+      config.cluster.name = 'Remote node';
+      config.server.accessToken = 'remote-access-token';
+    },
+  });
+  const central = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Central node';
+      config.cluster.peers = [{
+        id: 'remote1',
+        name: 'Remote node',
+        url: 'http://remote.test',
+        accessToken: 'remote-access-token',
+      }];
+    },
+    fetchImpl: appFetch({ 'http://remote.test': remote.app }),
+  });
+
+  try {
+    writeCodexSession(remoteCodexHome, 'thread-remote-free', process.cwd(), 'Remote free', '2026-06-03T10:00:00.000Z', [
+      ['user', 'remote prompt', '2026-06-03T10:01:00.000Z'],
+      ['assistant', 'remote answer', '2026-06-03T10:02:00.000Z'],
+    ]);
+    writeCodexSession(remoteCodexHome, 'thread-remote-managed', process.cwd(), 'Remote managed', '2026-06-03T11:00:00.000Z');
+    const managed = remote.hub.adoptCodexThread({ threadId: 'thread-remote-managed', cwd: process.cwd() });
+
+    const listResponse = await central.app.request(
+      `/api/codex/sessions?nodeId=remote1&cwd=${encodeURIComponent(process.cwd())}`,
+      { headers: authHeaders(central.config) },
+    );
+    const listBody = await json<{
+      sessions: Array<{ id: string; localId: string; nodeId: string; nodeName: string; managedSessionId: string | null }>;
+    }>(listResponse);
+
+    assert.equal(listResponse.status, 200);
+    assert.deepEqual(listBody.sessions.map((session) => session.id), ['remote1::thread-remote-managed', 'remote1::thread-remote-free']);
+    assert.equal(listBody.sessions[0]?.localId, 'thread-remote-managed');
+    assert.equal(listBody.sessions[0]?.nodeId, 'remote1');
+    assert.equal(listBody.sessions[0]?.nodeName, 'Remote node');
+    assert.equal(listBody.sessions[0]?.managedSessionId, `remote1::${managed.id}`);
+
+    const preview = await json<{
+      id: string;
+      localId: string;
+      nodeId: string;
+      messages: Array<{ role: string; content: string }>;
+    }>(await central.app.request(
+      '/api/codex/sessions/thread-remote-free/preview?nodeId=remote1',
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(preview.id, 'remote1::thread-remote-free');
+    assert.equal(preview.localId, 'thread-remote-free');
+    assert.equal(preview.nodeId, 'remote1');
+    assert.deepEqual(preview.messages.map((message) => [message.role, message.content]), [
+      ['user', 'remote prompt'],
+      ['assistant', 'remote answer'],
+    ]);
+  } finally {
+    await closeTestHub(central);
+    await closeTestHub(remote);
+    rmSync(remoteCodexHome, { recursive: true, force: true });
+  }
+});
+
 test('workspace file proxy resolves only the target peer', async () => {
   const remote = createTestApp({
     configure: (config) => {

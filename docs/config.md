@@ -175,7 +175,7 @@ Peer URLs are Hub roots. They can be bare LAN origins such as `http://10.126.126
 For the `gateway.1662803.xyz/apps/cx-remote` deployment, the gateway node uses:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.2
+pnpm add -g github:Wenswell/cx-remote#v0.1.3
 cx-remote config set cluster.name gateway
 cx-remote config set server.host 127.0.0.1
 cx-remote config set server.port 3030
@@ -190,7 +190,7 @@ cx-remote config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.1
 Each peer node keeps `cluster.peers` empty, sets its own workspace roots, and listens on the EasyTier LAN:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.2
+pnpm add -g github:Wenswell/cx-remote#v0.1.3
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030
 cx-remote config set server.accessToken '<peer-token>'

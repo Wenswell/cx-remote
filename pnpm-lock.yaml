@@ -17,6 +17,9 @@ importers:
       '@shoelace-style/shoelace':
         specifier: ^2.20.1
         version: 2.20.1(@floating-ui/utils@0.2.11)(@types/react@19.2.15)
+      chokidar:
+        specifier: ^5.0.0
+        version: 5.0.0
       grammy:
         specifier: ^1.42.0
         version: 1.42.0
@@ -373,6 +376,10 @@ packages:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
     engines: {node: '>=6.5'}
 
+  chokidar@5.0.0:
+    resolution: {integrity: sha512-TQMmc3w+5AxjpL8iIiwebF73dRDF4fBIieAqGn9RGCWaEVwQ6Fb2cGe31Yns0RRIzii5goJ1Y7xbMwo1TxMplw==}
+    engines: {node: '>= 20.19.0'}
+
   composed-offset-position@0.0.6:
     resolution: {integrity: sha512-Q7dLompI6lUwd7LWyIcP66r4WcS9u7AL2h8HaeipiRfCRPLMWqRx8fYsjb4OHi6UQFifO7XtNC2IlEJ1ozIFxw==}
     peerDependencies:
@@ -537,6 +544,10 @@ packages:
 
   qr-creator@1.0.0:
     resolution: {integrity: sha512-C0cqfbS1P5hfqN4NhsYsUXePlk9BO+a45bAQ3xLYjBL3bOIFzoVEjs79Fado9u9BPBD3buHi3+vY+C8tHh4qMQ==}
+
+  readdirp@5.0.0:
+    resolution: {integrity: sha512-9u/XQ1pvrQtYyMpZe7DXKv2p5CNvyVwzUB6uhLAnQwHMSgKMBR62lc7AHljaeteeHXn11XTAaLLUVZYVZyuRBQ==}
+    engines: {node: '>= 20.19.0'}
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -852,6 +863,10 @@ snapshots:
     dependencies:
       event-target-shim: 5.0.1
 
+  chokidar@5.0.0:
+    dependencies:
+      readdirp: 5.0.0
+
   composed-offset-position@0.0.6(@floating-ui/utils@0.2.11):
     dependencies:
       '@floating-ui/utils': 0.2.11
@@ -1002,6 +1017,8 @@ snapshots:
       source-map-js: 1.2.1
 
   qr-creator@1.0.0: {}
+
+  readdirp@5.0.0: {}
 
   resolve-pkg-maps@1.0.0: {}
 

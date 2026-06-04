@@ -1,4 +1,4 @@
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -13,30 +13,68 @@ const MAX_PREVIEW_MESSAGE_CHARS = 1200;
 export function defaultCodexHome() {
     return resolve(process.env.CODEX_HOME || join(homedir(), '.codex'));
 }
+export function resolveCodexCwdKey(cwd) {
+    return realpathSync(resolve(cwd));
+}
+export function loadCodexSessionIndex(codexHome) {
+    return readSessionIndex(join(resolve(codexHome), 'session_index.jsonl'));
+}
+export function listCodexSessionFiles(codexHome) {
+    return listCodexSessionFilesUnder(join(resolve(codexHome), 'sessions'));
+}
+export function listCodexSessionFilesUnder(root) {
+    const resolvedRoot = resolve(root);
+    return existsSync(resolvedRoot) ? [...listJsonlFiles(resolvedRoot)] : [];
+}
+export function readCodexSessionRecord(filePath, index, codexHome = defaultCodexHome()) {
+    const session = readSessionMeta(filePath, index);
+    if (!session)
+        return null;
+    const cwdKey = codexCwdKeyOrNull(session.cwd);
+    if (!cwdKey)
+        return null;
+    const resolvedFilePath = resolve(filePath);
+    return {
+        ...session,
+        codexHome: resolve(codexHome),
+        cwdKey,
+        filePath: resolvedFilePath,
+        threadId: session.id,
+    };
+}
+export function scanCodexSessionRecords(codexHome) {
+    const resolvedHome = resolve(codexHome);
+    const index = loadCodexSessionIndex(resolvedHome);
+    return listCodexSessionFiles(resolvedHome)
+        .map((filePath) => readCodexSessionRecord(filePath, index, resolvedHome))
+        .filter((session) => session !== null);
+}
 export function listCodexResumeSessions(options) {
     const codexHome = resolve(options.codexHome || defaultCodexHome());
-    const sessionsDir = join(codexHome, 'sessions');
-    const targetCwd = resolve(options.cwd);
+    const targetCwd = resolveCodexCwdKey(options.cwd);
     const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
-    if (!existsSync(sessionsDir))
-        return [];
-    const index = readSessionIndex(join(codexHome, 'session_index.jsonl'));
-    const sessions = [];
-    for (const filePath of listJsonlFiles(sessionsDir)) {
-        const session = readSessionMeta(filePath, index);
-        if (session && resolve(session.cwd) === targetCwd)
-            sessions.push(session);
-    }
-    return sessions
+    return scanCodexSessionRecords(codexHome)
+        .filter((session) => session.cwdKey === targetCwd)
+        .map(stripCodexSessionRecord)
         .sort((left, right) => sessionTime(right).localeCompare(sessionTime(left)))
         .slice(0, limit);
 }
 export function readCodexSessionTranscript(options) {
     const codexHome = resolve(options.codexHome || defaultCodexHome());
-    const index = readSessionIndex(join(codexHome, 'session_index.jsonl'));
+    const index = loadCodexSessionIndex(codexHome);
     const filePath = findSessionFilePath(join(codexHome, 'sessions'), options.threadId.trim());
     if (!filePath)
         return null;
+    return readCodexSessionTranscriptFromFile(filePath, index, codexHome);
+}
+export function readCodexSessionPreview(options) {
+    const transcript = readCodexSessionTranscript(options);
+    if (!transcript)
+        return null;
+    return buildPreview(transcript, options.messageLimit ?? DEFAULT_PREVIEW_MESSAGE_LIMIT);
+}
+export function readCodexSessionTranscriptFromFile(filePath, indexOrCodexHome, codexHome = defaultCodexHome()) {
+    const index = indexOrCodexHome instanceof Map ? indexOrCodexHome : loadCodexSessionIndex(indexOrCodexHome || codexHome);
     const session = readSessionMeta(filePath, index);
     if (!session)
         return null;
@@ -45,19 +83,11 @@ export function readCodexSessionTranscript(options) {
         messages: readTranscriptMessages(filePath),
     };
 }
-export function readCodexSessionPreview(options) {
-    const transcript = readCodexSessionTranscript(options);
+export function readCodexSessionPreviewFromFile(filePath, indexOrCodexHome, codexHome = defaultCodexHome(), messageLimit = DEFAULT_PREVIEW_MESSAGE_LIMIT) {
+    const transcript = readCodexSessionTranscriptFromFile(filePath, indexOrCodexHome, codexHome);
     if (!transcript)
         return null;
-    const limit = Math.max(Math.trunc(options.messageLimit ?? DEFAULT_PREVIEW_MESSAGE_LIMIT), 0);
-    return {
-        ...transcript.session,
-        messageCount: transcript.messages.length,
-        messages: transcript.messages.slice(0, limit).map((message) => ({
-            ...message,
-            content: truncatePreviewContent(message.content),
-        })),
-    };
+    return buildPreview(transcript, messageLimit);
 }
 export function readCodexTranscript(options) {
     return readCodexSessionTranscript(options)?.messages ?? [];
@@ -179,6 +209,29 @@ function readSessionMeta(filePath, index) {
         updatedAt,
         originator: stringValue(payload.originator) || '',
         threadSource: stringValue(payload.thread_source) || '',
+    };
+}
+function stripCodexSessionRecord(session) {
+    const { codexHome: _codexHome, cwdKey: _cwdKey, filePath: _filePath, threadId: _threadId, ...rest } = session;
+    return rest;
+}
+function codexCwdKeyOrNull(cwd) {
+    try {
+        return resolveCodexCwdKey(cwd);
+    }
+    catch {
+        return null;
+    }
+}
+function buildPreview(transcript, messageLimit) {
+    const limit = Math.max(Math.trunc(messageLimit), 0);
+    return {
+        ...transcript.session,
+        messageCount: transcript.messages.length,
+        messages: transcript.messages.slice(0, limit).map((message) => ({
+            ...message,
+            content: truncatePreviewContent(message.content),
+        })),
     };
 }
 function transcriptMessageFromLine(line) {
