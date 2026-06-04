@@ -34,7 +34,7 @@ cx-remote --help
 Stable release install:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.1
+pnpm add -g github:Wenswell/cx-remote#v0.1.2
 ```
 
 When pnpm reports that the global bin directory is outside `PATH`, run `pnpm setup`, open a new shell, and run the install command again.
@@ -178,7 +178,7 @@ Browser
 Install the same global CLI on every Hub node:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.1
+pnpm add -g github:Wenswell/cx-remote#v0.1.2
 cx-remote --help
 ```
 
@@ -201,7 +201,7 @@ Directory browsing through the gateway keeps the peer workspace identity. Web us
 Peer Hub on `10.126.126.2`:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.1
+pnpm add -g github:Wenswell/cx-remote#v0.1.2
 cx-remote config set cluster.name mac
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030
@@ -214,7 +214,7 @@ cx-remote hub
 Peer Hub on `10.126.126.3`:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.1
+pnpm add -g github:Wenswell/cx-remote#v0.1.2
 cx-remote config set cluster.name mint
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030

@@ -353,6 +353,12 @@ export class Store {
         lastError TEXT
       );
 
+      CREATE INDEX IF NOT EXISTS idx_sessions_updated
+        ON sessions(updatedAt DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_cwd_updated
+        ON sessions(cwd, updatedAt DESC);
+
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,

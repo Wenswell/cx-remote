@@ -773,9 +773,40 @@ export class ClusterService {
   }
 
   private async requireWorkspace(workspaceId: string): Promise<WorkspaceView> {
-    const workspaces = await this.listWorkspaces();
-    const workspace = workspaces.find((item) => item.id === workspaceId);
-    if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
+    const parsed = parseWorkspaceId(workspaceId);
+    if (!parsed) throw new Error(`Invalid workspace: ${workspaceId}`);
+
+    let workspace: WorkspaceView;
+    if (parsed.nodeId === LOCAL_NODE_ID) {
+      const root = this.config.workspace.roots[parsed.index];
+      if (root !== parsed.path) throw new Error(`Unknown workspace: ${workspaceId}`);
+      workspace = {
+        id: workspaceId,
+        nodeId: LOCAL_NODE_ID,
+        nodeName: this.config.cluster.name,
+        name: basename(root) || root,
+        path: root,
+        homePath: homedir(),
+        connected: true,
+        error: null,
+      };
+    } else {
+      const peer = this.requirePeer(parsed.nodeId);
+      await this.ensureSnapshot(peer);
+      const root = peer.snapshot?.workspaceRoots[parsed.index];
+      if (root !== parsed.path) throw new Error(`Unknown workspace: ${workspaceId}`);
+      workspace = {
+        id: workspaceId,
+        nodeId: peer.config.id,
+        nodeName: peer.config.name,
+        name: basename(root) || root,
+        path: root,
+        homePath: peer.snapshot?.homePath || '',
+        connected: peer.connected,
+        error: peer.error,
+      };
+    }
+
     if (!workspace.connected) throw new Error(`Workspace node is unavailable: ${workspace.nodeName}`);
     return workspace;
   }
@@ -1120,6 +1151,19 @@ function scopedAfterId(nodeId: string, id: string | undefined): string | undefin
 
 function workspaceId(nodeId: string, path: string, index: number): string {
   return `${nodeId}::${index}::${path}`;
+}
+
+function parseWorkspaceId(id: string): { nodeId: string; index: number; path: string } | null {
+  const first = id.indexOf('::');
+  if (first < 0) return null;
+  const second = id.indexOf('::', first + 2);
+  if (second < 0) return null;
+  const nodeId = id.slice(0, first);
+  const indexText = id.slice(first + 2, second);
+  const path = id.slice(second + 2);
+  const index = Number(indexText);
+  if (!nodeId || !path || !Number.isInteger(index) || index < 0) return null;
+  return { nodeId, index, path };
 }
 
 function promptStatusQuery(statuses: PromptJobStatus[]): string {

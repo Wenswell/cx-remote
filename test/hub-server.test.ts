@@ -349,6 +349,60 @@ test('central node can proxy peers without local workspaces', async () => {
   }
 });
 
+test('workspace file proxy resolves only the target peer', async () => {
+  const remote = createTestApp({
+    configure: (config) => {
+      config.cluster.name = 'Remote node';
+      config.server.accessToken = 'remote-access-token';
+    },
+  });
+  const calls: string[] = [];
+  const central = createTestApp({
+    configure: (config) => {
+      config.workspace.roots = [];
+      config.cluster.peers = [
+        {
+          id: 'remote1',
+          name: 'Remote node',
+          url: 'http://remote1.test',
+          accessToken: 'remote-access-token',
+        },
+        {
+          id: 'remote2',
+          name: 'Other node',
+          url: 'http://remote2.test',
+          accessToken: 'other-access-token',
+        },
+      ];
+    },
+    fetchImpl: (async (input: Request | string | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      calls.push(request.url);
+      const url = new URL(request.url);
+      if (url.origin === 'http://remote1.test') return await remote.app.request(new Request(request));
+      throw new Error(`Unexpected peer request: ${url.origin}`);
+    }) as typeof fetch,
+  });
+
+  try {
+    const workspaceId = `remote1::0::${process.cwd()}`;
+    const response = await central.app.request(
+      `/api/files?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent('src')}`,
+      { headers: authHeaders(central.config) },
+    );
+    const body = await json<{ workspaceId: string; nodeId: string; current: string }>(response);
+
+    assert.equal(response.status, 200);
+    assert.equal(body.workspaceId, workspaceId);
+    assert.equal(body.nodeId, 'remote1');
+    assert.equal(body.current, join(process.cwd(), 'src'));
+    assert.equal(calls.some((url) => url.startsWith('http://remote2.test/')), false);
+  } finally {
+    await closeTestHub(central);
+    await closeTestHub(remote);
+  }
+});
+
 test('session detail and create APIs proxy remote nodes', async () => {
   const remote = createTestApp({
     configure: (config) => {
