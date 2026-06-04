@@ -275,6 +275,7 @@ test('central node can proxy peers without local workspaces', async () => {
       config.server.accessToken = 'remote-access-token';
     },
   });
+  const remoteSrcSession = remote.hub.createSession({ cwd: join(process.cwd(), 'src'), title: 'Remote src session' });
   const central = createTestApp({
     configure: (config) => {
       config.workspace.roots = [];
@@ -296,12 +297,44 @@ test('central node can proxy peers without local workspaces', async () => {
     assert.deepEqual(status.nodes.find((node) => node.id === 'local')?.workspaceRoots, []);
     assert.equal(status.workspaceRoots.includes(process.cwd()), true);
 
-    const workspaces = await json<Array<{ nodeId: string; path: string }>>(await central.app.request(
+    const workspaces = await json<Array<{ id: string; nodeId: string; path: string }>>(await central.app.request(
       '/api/workspaces',
       { headers: authHeaders(central.config) },
     ));
     assert.equal(workspaces.some((workspace) => workspace.nodeId === 'local'), false);
     assert.equal(workspaces.some((workspace) => workspace.nodeId === 'remote1' && workspace.path === process.cwd()), true);
+    const remoteWorkspace = workspaces.find((workspace) => workspace.nodeId === 'remote1' && workspace.path === process.cwd());
+    assert.ok(remoteWorkspace);
+
+    const remoteFiles = await json<{
+      workspaceId: string;
+      nodeId: string;
+      nodeName: string;
+      current: string;
+      relativePath: string;
+    }>(await central.app.request(
+      `/api/files?workspaceId=${encodeURIComponent(remoteWorkspace.id)}&path=${encodeURIComponent('src')}`,
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(remoteFiles.workspaceId, remoteWorkspace.id);
+    assert.equal(remoteFiles.nodeId, 'remote1');
+    assert.equal(remoteFiles.nodeName, 'Remote node');
+    assert.equal(remoteFiles.current, join(process.cwd(), 'src'));
+    assert.equal(remoteFiles.relativePath, 'src');
+
+    const remoteSessions = await json<Array<{ id: string; localId: string; nodeId: string; cwd: string; title: string }>>(await central.app.request(
+      `/api/sessions?nodeId=${encodeURIComponent(remoteFiles.nodeId)}&cwd=${encodeURIComponent(remoteFiles.current)}`,
+      { headers: authHeaders(central.config) },
+    ));
+    assert.equal(
+      remoteSessions.some((session) => (
+        session.id === `remote1::${remoteSrcSession.id}`
+        && session.localId === remoteSrcSession.id
+        && session.nodeId === 'remote1'
+        && session.cwd === join(process.cwd(), 'src')
+      )),
+      true,
+    );
 
     const localCreate = await central.app.request('/api/sessions', {
       method: 'POST',

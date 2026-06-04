@@ -531,11 +531,11 @@ export class ClusterService {
     const peer = this.requirePeer(workspace.nodeId);
     const payload = await peer.client.listFiles(workspace.path, path);
     return {
+      ...payload,
       workspaceId: workspace.id,
       nodeId: workspace.nodeId,
       nodeName: workspace.nodeName,
       homePath: workspace.homePath,
-      ...payload,
     };
   }
 
