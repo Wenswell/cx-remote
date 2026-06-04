@@ -38,6 +38,23 @@ Adopt Codex session
   codex app-server turn/start
 ```
 
+```text
+External native Codex CLI activity
+  ~/.codex/config.toml
+    notify = ["cx-remote", "codex-hook"]
+    [features]
+    hooks = true
+      │ hook JSON on stdin
+      ▼
+  cx-remote codex-hook
+      │ POST /api/codex/hooks
+      ▼
+  codex_native_activities row by Codex thread id
+      │
+      ├─ GET /api/sessions/:id -> nativeCodexActivity
+      └─ GET /api/events -> codex.native.activity.updated
+```
+
 ## Rules
 
 - The owning node Hub session is the source of truth for Web, Telegram, and CLI synchronization.
@@ -49,6 +66,10 @@ Adopt Codex session
 - Web adoption imports the native Codex transcript into Hub messages before opening the session.
 - CLI/API adoption registers an explicit Codex thread id under Hub control on the selected node. Add `--import` or `importTranscript: true` to import the stored transcript into Hub messages.
 - Runtime startup resumes an adopted or previously persisted Codex thread before starting the next turn.
+- External native Codex CLI activity is tracked separately from the Hub-managed session status. Hooks update `nativeCodexActivity` for the matching `codexThreadId`; the Hub-owned `Session.status` keeps its existing managed-runtime meaning.
+- Hook state mapping is `SessionStart -> ready`, `UserPromptSubmit` and tool hooks -> `working`, `PermissionRequest -> waiting_approval`, and `Stop -> idle`. `Stop.last_assistant_message` is stored as the latest native reply preview.
+- `ready`, `working`, and `waiting_approval` use a 60 second lease. When no newer hook arrives in that window, the visible native state becomes `unknown`.
+- Native activity is persisted in SQLite and published as `codex.native.activity.updated`. Session detail, CLI `cx-remote session`, Web session header, local SSE, and central Hub relayed SSE expose the same activity object.
 - Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-remote session-config`.
 - A central Hub can proxy multiple remote Hub peers over the LAN. Remote sessions keep their runtime, queue, approvals, and persistence on the owning node; the central Hub aggregates browsing, switching, and notifications.
 - Search is enabled by default. `codex.model=auto` and `codex.reasoningEffort=default` leave those choices to Codex; Web displays the inherited values as `Default(<resolved value>)`.

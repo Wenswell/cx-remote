@@ -144,6 +144,15 @@ export function readCodexSessionTranscriptFromFile(
   };
 }
 
+export function readCodexSessionMetaFromFile(
+  filePath: string,
+  indexOrCodexHome?: Map<string, SessionIndexEntry> | string,
+  codexHome = defaultCodexHome(),
+): CodexResumeSession | null {
+  const index = indexOrCodexHome instanceof Map ? indexOrCodexHome : loadCodexSessionIndex(indexOrCodexHome || codexHome);
+  return readSessionMeta(filePath, index);
+}
+
 export function readCodexSessionPreviewFromFile(
   filePath: string,
   indexOrCodexHome?: Map<string, SessionIndexEntry> | string,

@@ -26,6 +26,45 @@ function appFetch(apps: Record<string, { request: (input: Request | string | URL
   }) as typeof fetch;
 }
 
+async function readSseUntil(
+  response: Response,
+  abort: AbortController,
+  afterReady: () => Promise<void>,
+  pattern: RegExp,
+): Promise<string> {
+  assert.ok(response.body);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let ready = false;
+  try {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { value, done } = await readWithTimeout(reader, 1_000);
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      if (!ready && text.includes('"type":"ready"')) {
+        ready = true;
+        await afterReady();
+      }
+      if (pattern.test(text)) break;
+    }
+  } finally {
+    abort.abort();
+    await reader.cancel().catch(() => {});
+  }
+  return text;
+}
+
+function readWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number,
+): ReturnType<ReadableStreamDefaultReader<Uint8Array>['read']> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Timed out waiting for SSE frame')), timeoutMs);
+    reader.read().then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
 test('events endpoint replays stored events after a cursor', async () => {
   const context = createTestApp();
   const abort = new AbortController();
@@ -194,6 +233,166 @@ test('session adopt API creates a Hub-managed session for an existing Codex thre
       { headers: authHeaders(context.config) },
     ));
     assert.equal(detail.session.codexThreadId, 'thread-1');
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('codex hook API records native activity and replays it through events', async () => {
+  const context = createTestApp();
+  const session = createSession(context.store, 'session-1', 'idle', 'thread-hook');
+
+  try {
+    const working = await context.app.request('/api/codex/hooks', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        session_id: 'thread-hook',
+        turn_id: 'turn-1',
+        cwd: process.cwd(),
+      }),
+    });
+    assert.equal(working.status, 200);
+
+    const stopped = await context.app.request('/api/codex/hooks', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        hook_event_name: 'Stop',
+        session_id: 'thread-hook',
+        turn_id: 'turn-1',
+        cwd: process.cwd(),
+        last_assistant_message: 'native hook reply',
+      }),
+    });
+    assert.equal(stopped.status, 200);
+
+    const detail = await json<{
+      nativeCodexActivity: { state: string; threadId: string; nativeSessionId: string; lastAssistantMessage: string | null; lastEventName: string } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+    assert.equal(detail.nativeCodexActivity?.state, 'idle');
+    assert.equal(detail.nativeCodexActivity?.threadId, 'thread-hook');
+    assert.equal(detail.nativeCodexActivity?.nativeSessionId, 'thread-hook');
+    assert.equal(detail.nativeCodexActivity?.lastAssistantMessage, 'native hook reply');
+    assert.equal(detail.nativeCodexActivity?.lastEventName, 'stop');
+
+    const abort = new AbortController();
+    try {
+      const response = await context.app.request(
+        `/api/events?sessionId=${encodeURIComponent(session.id)}`,
+        { headers: authHeaders(context.config), signal: abort.signal },
+      );
+      const text = await readInitialSse(response, abort);
+
+      assert.equal(response.status, 200);
+      assert.match(text, /"type":"codex\.native\.activity\.updated"/);
+      assert.match(text, /"state":"idle"/);
+      assert.match(text, /"native hook reply"/);
+    } finally {
+      abort.abort();
+    }
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('codex hook API publishes native activity to connected event streams', async () => {
+  const context = createTestApp();
+  const session = createSession(context.store, 'session-1', 'idle', 'thread-live-hook');
+  const abort = new AbortController();
+
+  try {
+    const response = await context.app.request(
+      `/api/events?sessionId=${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config), signal: abort.signal },
+    );
+    const text = await readSseUntil(response, abort, async () => {
+      const hook = await context.app.request('/api/codex/hooks', {
+        method: 'POST',
+        headers: jsonHeaders(context.config),
+        body: JSON.stringify({
+          hook_event_name: 'PermissionRequest',
+          session_id: 'thread-live-hook',
+          turn_id: 'turn-live',
+          cwd: process.cwd(),
+        }),
+      });
+      assert.equal(hook.status, 200);
+    }, /"type":"codex\.native\.activity\.updated"/);
+
+    assert.equal(response.status, 200);
+    assert.match(text, /"type":"codex\.native\.activity\.updated"/);
+    assert.match(text, /"state":"waiting_approval"/);
+    assert.match(text, /"thread-live-hook"/);
+  } finally {
+    abort.abort();
+    await closeTestHub(context);
+  }
+});
+
+test('unknown Codex hook with assistant message is treated as idle native activity', async () => {
+  const context = createTestApp();
+  const session = createSession(context.store, 'session-1', 'idle', 'thread-final-message');
+
+  try {
+    const response = await context.app.request('/api/codex/hooks', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        hook_event_name: 'FinalAssistantMessage',
+        session_id: 'thread-final-message',
+        turn_id: 'turn-final',
+        cwd: process.cwd(),
+        last_assistant_message: 'final native answer',
+      }),
+    });
+    assert.equal(response.status, 200);
+
+    const detail = await json<{
+      nativeCodexActivity: { state: string; lastAssistantMessage: string | null } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(detail.nativeCodexActivity?.state, 'idle');
+    assert.equal(detail.nativeCodexActivity?.lastAssistantMessage, 'final native answer');
+  } finally {
+    await closeTestHub(context);
+  }
+});
+
+test('session detail marks expired native Codex activity as unknown', async () => {
+  const context = createTestApp();
+  const session = createSession(context.store, 'session-1', 'idle', 'thread-stale');
+
+  try {
+    context.store.upsertCodexNativeActivity({
+      nativeSessionId: 'native-stale',
+      threadId: 'thread-stale',
+      cwd: process.cwd(),
+      transcriptPath: null,
+      turnId: 'turn-stale',
+      state: 'working',
+      lastEventName: 'userpromptsubmit',
+      lastEventAt: Date.now() - 61_000,
+      lastAssistantMessage: null,
+    });
+
+    const detail = await json<{
+      nativeCodexActivity: { state: string; threadId: string; lastEventName: string } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(detail.nativeCodexActivity?.state, 'unknown');
+    assert.equal(detail.nativeCodexActivity?.threadId, 'thread-stale');
+    assert.equal(detail.nativeCodexActivity?.lastEventName, 'userpromptsubmit');
   } finally {
     await closeTestHub(context);
   }

@@ -12,6 +12,7 @@ First usable rebuild:
 - SQLite persistence for Hub sessions, messages, prompt queue, approvals, bindings, and events
 - Codex execution through `codex app-server`
 - adoption of existing native Codex sessions into Hub-managed sessions
+- native Codex CLI hook activity shown on adopted Hub sessions
 - Telegram is the only IM control in this version
 
 ## Install
@@ -115,6 +116,7 @@ The Web console can:
 - browse workspace directories
 - send messages to Codex
 - view Hub messages, runtime status, Codex config, thread id, and turn id
+- view native Codex CLI hook activity for adopted sessions
 - view active prompt queue state
 - view pending and historical Codex approvals
 - stream assistant output while a turn is running
@@ -138,6 +140,7 @@ cx-remote session <session-id>
 cx-remote messages <session-id>
 cx-remote new --cwd /home/ilove/Documents/repos/cx-remote
 cx-remote adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-remote --import
+cx-remote codex-hook < hook-payload.json
 cx-remote session-config <session-id> --search --permission-mode yolo
 cx-remote send <session-id> "check git status"
 cx-remote attach <session-id>
@@ -151,6 +154,17 @@ cx-remote doctor
 ```
 
 Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-remote adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+
+External native Codex CLI runs can report activity for an adopted thread through Codex hooks:
+
+```toml
+notify = ["cx-remote", "codex-hook"]
+
+[features]
+hooks = true
+```
+
+`cx-remote codex-hook` reads the Codex hook JSON from stdin and sends it to the local Hub. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
 
 `cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

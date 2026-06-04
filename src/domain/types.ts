@@ -20,6 +20,8 @@ export type ApprovalStatus = 'pending' | 'resolved' | 'expired';
 
 export type PromptJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'canceled';
 
+export type CodexNativeActivityState = 'idle' | 'ready' | 'working' | 'waiting_approval' | 'error' | 'unknown';
+
 export interface CodexSessionConfig {
   model?: string;
   reasoningEffort?: string;
@@ -72,6 +74,18 @@ export interface Approval {
   source: ControlType | null;
 }
 
+export interface CodexNativeActivity {
+  nativeSessionId: string;
+  threadId: string;
+  cwd: string | null;
+  transcriptPath: string | null;
+  turnId: string | null;
+  state: CodexNativeActivityState;
+  lastEventName: string;
+  lastEventAt: number;
+  lastAssistantMessage: string | null;
+}
+
 export interface PromptJob {
   id: string;
   sessionId: string;
@@ -103,6 +117,7 @@ export interface HubEvent {
     | 'session.updated'
     | 'session.deleted'
     | 'session.control.updated'
+    | 'codex.native.activity.updated'
     | 'message.created'
     | 'message.delta'
     | 'approval.created'
@@ -119,6 +134,7 @@ export interface SessionDetail {
   messages: Message[];
   approvals: Approval[];
   queue: PromptJob[];
+  nativeCodexActivity: CodexNativeActivity | null;
   eventCursor: number;
 }
 

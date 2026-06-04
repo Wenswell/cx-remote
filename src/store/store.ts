@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { Approval, ControlBinding, HubEvent, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
+import type { Approval, CodexNativeActivity, ControlBinding, HubEvent, Message, PromptJob, PromptJobStatus, Session } from '../domain/types.js';
 
 type SqlValue = string | number | null;
 export type ApprovalQuery = {
@@ -34,6 +34,7 @@ type MessageRow = Omit<Message, 'metadata'> & { metadata_json: string };
 type ApprovalRow = Omit<Approval, 'input' | 'response'> & { input_json: string; response_json: string | null };
 type PromptJobRow = PromptJob;
 type EventRow = Omit<HubEvent, 'payload'> & { payload_json: string };
+type CodexNativeActivityRow = CodexNativeActivity & { updatedAt: number };
 
 export type CodexSessionIndexRecord = {
   codexHome: string;
@@ -213,6 +214,45 @@ export class Store {
       WHERE codexHome = ? AND threadId = ?
     `).get(resolve(codexHome), threadId) as CodexSessionRow | undefined;
     return row ? decodeCodexSession(row) : null;
+  }
+
+  upsertCodexNativeActivity(activity: CodexNativeActivity): CodexNativeActivity {
+    this.db.prepare(`
+      INSERT INTO codex_native_activities (
+        threadId, nativeSessionId, cwd, transcriptPath, turnId, state,
+        lastEventName, lastEventAt, lastAssistantMessage, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(threadId) DO UPDATE SET
+        nativeSessionId = excluded.nativeSessionId,
+        cwd = excluded.cwd,
+        transcriptPath = excluded.transcriptPath,
+        turnId = excluded.turnId,
+        state = excluded.state,
+        lastEventName = excluded.lastEventName,
+        lastEventAt = excluded.lastEventAt,
+        lastAssistantMessage = excluded.lastAssistantMessage,
+        updatedAt = excluded.updatedAt
+    `).run(
+      activity.threadId,
+      activity.nativeSessionId,
+      activity.cwd,
+      activity.transcriptPath,
+      activity.turnId,
+      activity.state,
+      activity.lastEventName,
+      activity.lastEventAt,
+      activity.lastAssistantMessage,
+      Date.now(),
+    );
+    return activity;
+  }
+
+  getCodexNativeActivity(threadId: string): CodexNativeActivity | null {
+    const row = this.db.prepare(`
+      SELECT * FROM codex_native_activities
+      WHERE threadId = ?
+    `).get(threadId) as CodexNativeActivityRow | undefined;
+    return row ? decodeCodexNativeActivity(row) : null;
   }
 
   deleteCodexSessionByFilePath(codexHome: string, filePath: string): boolean {
@@ -650,6 +690,22 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_codex_sessions_home_file
         ON codex_sessions(codexHome, filePath);
 
+      CREATE TABLE IF NOT EXISTS codex_native_activities (
+        threadId TEXT PRIMARY KEY,
+        nativeSessionId TEXT NOT NULL,
+        cwd TEXT,
+        transcriptPath TEXT,
+        turnId TEXT,
+        state TEXT NOT NULL,
+        lastEventName TEXT NOT NULL,
+        lastEventAt INTEGER NOT NULL,
+        lastAssistantMessage TEXT,
+        updatedAt INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_codex_native_activities_updated
+        ON codex_native_activities(updatedAt DESC);
+
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -792,6 +848,17 @@ function decodeCodexSession(row: CodexSessionRow): CodexSessionIndexRecord {
   return {
     ...row,
     id: row.threadId,
+  };
+}
+
+function decodeCodexNativeActivity(row: CodexNativeActivityRow): CodexNativeActivity {
+  const { updatedAt: _, ...activity } = row;
+  return {
+    ...activity,
+    cwd: activity.cwd ?? null,
+    transcriptPath: activity.transcriptPath ?? null,
+    turnId: activity.turnId ?? null,
+    lastAssistantMessage: activity.lastAssistantMessage ?? null,
   };
 }
 

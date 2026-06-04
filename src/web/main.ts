@@ -47,6 +47,18 @@ type Session = {
   updatedAt: number;
 };
 
+type CodexNativeActivity = {
+  nativeSessionId: string;
+  threadId: string;
+  cwd: string | null;
+  transcriptPath: string | null;
+  turnId: string | null;
+  state: string;
+  lastEventName: string;
+  lastEventAt: number;
+  lastAssistantMessage: string | null;
+};
+
 type Message = {
   id: string;
   sessionId: string;
@@ -136,6 +148,7 @@ type SessionDetail = {
   messages: Message[];
   approvals: Approval[];
   queue: PromptJob[];
+  nativeCodexActivity: CodexNativeActivity | null;
   eventCursor: number;
 };
 
@@ -253,6 +266,7 @@ let approvalHistory: Approval[] = [];
 let promptQueue: PromptJob[] = [];
 let workspaces: Workspace[] = [];
 let currentSession: Session | null = null;
+let currentNativeCodexActivity: CodexNativeActivity | null = null;
 let codexDefaults: SessionConfig = {};
 let currentPath = '';
 let homePath = '';
@@ -472,6 +486,7 @@ async function loadSession(): Promise<void> {
   if (!activeSessionId) {
     closeEvents();
     currentSession = null;
+    currentNativeCodexActivity = null;
     messages = [];
     pendingApprovals = [];
     approvalHistory = [];
@@ -486,6 +501,7 @@ async function loadSession(): Promise<void> {
   const data = await api<SessionDetail>(apiPath.session(sessionId));
   if (sessionId !== activeSessionId) return;
   currentSession = data.session;
+  currentNativeCodexActivity = data.nativeCodexActivity || null;
   syncSessionLists(data.session);
   messages = data.messages;
   pendingApprovals = data.approvals;
@@ -700,6 +716,7 @@ function renderSession(): void {
 function renderSessionHeader(): void {
   if (!currentSession) return;
   const config = currentSession.config || {};
+  const activity = currentNativeCodexActivity;
   element('session-title').textContent = currentSession.title;
   element('session-meta').textContent = `${currentSession.nodeName} · ${displayPath(currentSession.cwd, currentSession.nodeId)}`;
 
@@ -721,9 +738,10 @@ function renderSessionHeader(): void {
     ['Hub session', shortId(currentSession.localId)],
     ['Codex thread', shortId(currentSession.codexThreadId)],
     ['Codex turn', shortId(currentSession.currentTurnId)],
+    activity ? ['native Codex', `${activity.state} · ${shortId(activity.threadId)}${activity.lastEventName ? ` · ${activity.lastEventName}` : ''}`] : null,
     ['lease', currentSession.controlLeaseExpiresAt ? new Date(currentSession.controlLeaseExpiresAt).toLocaleTimeString() : ''],
     ['error', currentSession.lastError || ''],
-  ].filter(([, value]) => value);
+  ].filter((item): item is [string, string] => Boolean(item && item[1]));
   if (runtime.length) {
     const line = document.createElement('div');
     line.className = 'runtime-line';
@@ -979,7 +997,7 @@ function connectEvents(sessionId: string): void {
         return;
       }
     }
-    if (['approval.created', 'approval.resolved', 'session.control.updated'].includes(data.type)
+    if (['approval.created', 'approval.resolved', 'session.control.updated', 'codex.native.activity.updated'].includes(data.type)
       || (data.type === 'session.updated' && data.payload?.queuedPrompts !== undefined)) {
       run(loadSession());
     }

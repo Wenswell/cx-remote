@@ -481,6 +481,7 @@ export class ClusterService {
             messages: detail.messages.map((message) => this.decorateMessage(node, message)),
             approvals: detail.approvals.map((approval) => this.decorateApproval(node, approval)),
             queue: detail.queue.map((job) => this.decoratePromptJob(node, job)),
+            nativeCodexActivity: detail.nativeCodexActivity,
             eventCursor,
         };
     }

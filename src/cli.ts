@@ -106,6 +106,12 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       }), null, 2));
       return;
     }
+    case 'codex-hook': {
+      const payload = await readJsonFromStdin();
+      const result = await client.post('/api/codex/hooks', payload);
+      if (hasFlag(argv, '--json')) console.log(JSON.stringify(result, null, 2));
+      return;
+    }
     case 'send': {
       const sessionId = argv[1];
       const text = argv.slice(2).join(' ');
@@ -319,6 +325,19 @@ function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknow
   console.log(json ? JSON.stringify(value, null, 2) : formatter(value));
 }
 
+async function readJsonFromStdin(): Promise<unknown> {
+  if (process.stdin.isTTY) throw new Error('Usage: cx-remote codex-hook < payload.json');
+  const text = await readStream(process.stdin);
+  if (!text.trim()) throw new Error('Codex hook payload is empty');
+  return JSON.parse(text) as unknown;
+}
+
+async function readStream(stream: NodeJS.ReadStream): Promise<string> {
+  let text = '';
+  for await (const chunk of stream) text += String(chunk);
+  return text;
+}
+
 async function attachSession(client: ApiClient, sessionId: string, claimExclusive: boolean): Promise<void> {
   const control = cliControlIdentity(hostname(), process.pid);
   const claim = () => client.patch(`/api/sessions/${encodeURIComponent(sessionId)}/control`, {
@@ -470,19 +489,33 @@ function formatSessionDetail(value: unknown): string {
     };
     messages?: unknown[];
     approvals?: unknown[];
+    nativeCodexActivity?: {
+      nativeSessionId: string;
+      threadId: string;
+      cwd: string | null;
+      transcriptPath: string | null;
+      turnId: string | null;
+      state: string;
+      lastEventName: string;
+      lastEventAt: number;
+      lastAssistantMessage: string | null;
+    } | null;
   };
+  const activity = detail.nativeCodexActivity;
   return [
     `Hub session: ${detail.session.id}\t${detail.session.nodeName ?? 'local'}\t${detail.session.status}\t${detail.session.title}`,
     `cwd: ${detail.session.cwd}`,
     `runtime: ${formatSessionConfig(detail.session.config)}`,
     `Codex thread: ${detail.session.codexThreadId ?? '-'}`,
     `Codex turn: ${detail.session.currentTurnId ?? '-'}`,
+    activity ? `Codex hook: ${activity.state} | ${shortId(activity.threadId)} | ${activity.lastEventName}` : '',
+    activity ? `native session: ${shortId(activity.nativeSessionId)} | ${activity.transcriptPath ?? '-'}${activity.lastAssistantMessage ? ` | ${activity.lastAssistantMessage.slice(0, 120)}` : ''}` : '',
     `control: ${detail.session.controlLabel ?? 'shared'}`,
     `lease: ${detail.session.controlLeaseExpiresAt ? new Date(detail.session.controlLeaseExpiresAt).toISOString() : '-'}`,
     `lastError: ${detail.session.lastError ?? '-'}`,
     `messages: ${detail.messages?.length ?? 0}`,
     `pendingApprovals: ${detail.approvals?.length ?? 0}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function formatSessionConfig(config: { model?: string; reasoningEffort?: string; permissionMode?: string; search?: boolean } | undefined): string {
@@ -493,6 +526,11 @@ function formatSessionConfig(config: { model?: string; reasoningEffort?: string;
     `permission=${config.permissionMode || '-'}`,
     `search=${config.search ? 'on' : 'off'}`,
   ].join(' ');
+}
+
+function shortId(value: string | null | undefined): string {
+  if (!value) return '-';
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
 function formatMessages(value: unknown): string {
@@ -538,6 +576,7 @@ function printHelp(): void {
     '    [--import]',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
+    '  cx-remote codex-hook                   Forward a native Codex hook payload from stdin',
     '  cx-remote send <session-id> <text>    Send message',
     '  cx-remote attach <session-id>         Attach shared CLI to a session',
     '  cx-remote attach <session-id> --claim Attach with exclusive control',

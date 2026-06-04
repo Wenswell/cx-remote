@@ -5,6 +5,7 @@ import { resolveWorkspacePath } from '../config/config.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
 import { CodexRuntime } from '../agents/codex/runtime.js';
+import { CODEX_NATIVE_ACTIVITY_TTL_MS, codexNativeActivityStateAt, codexNativeActivityView, isLeaseBackedCodexNativeActivity, normalizeCodexNativeHookEvent, } from '../agents/codex/hooks.js';
 import { readCodexSessionTranscript } from '../agents/codex/sessions.js';
 const DEFAULT_CONTROL_TTL_MS = 10 * 60 * 1000;
 const INTERRUPTED_RESTART_ERROR = 'Hub restarted before the Codex turn finished';
@@ -16,6 +17,7 @@ export class ControlHub {
     permissions;
     runtimes = new Map();
     pumpingSessions = new Set();
+    nativeActivityTimers = new Map();
     constructor(config, store, events, permissions) {
         this.config = config;
         this.store = store;
@@ -113,6 +115,7 @@ export class ControlHub {
             messages: this.store.listMessages(session.id),
             approvals: this.store.listApprovals({ sessionId: session.id, status: 'pending' }),
             queue: this.store.listPromptJobs({ sessionId: session.id, statuses: ACTIVE_PROMPT_JOB_STATUSES, limit: 50 }),
+            nativeCodexActivity: session.codexThreadId ? this.getCodexNativeActivityView(session.codexThreadId) : null,
             eventCursor: this.latestEventId(session.id),
         };
     }
@@ -276,8 +279,31 @@ export class ControlHub {
     async resolveApproval(approvalId, decision, source) {
         await this.permissions.resolveApproval(approvalId, decision, source);
     }
+    recordCodexHook(input) {
+        const event = normalizeCodexNativeHookEvent(input);
+        if (!event)
+            throw new Error('Invalid Codex hook payload');
+        const stored = this.store.upsertCodexNativeActivity({
+            nativeSessionId: event.nativeSessionId,
+            threadId: event.threadId,
+            cwd: event.cwd,
+            transcriptPath: event.transcriptPath,
+            turnId: event.turnId,
+            state: event.state,
+            lastEventName: event.lastEventName,
+            lastEventAt: event.lastEventAt,
+            lastAssistantMessage: event.lastAssistantMessage,
+        });
+        const activity = codexNativeActivityView(stored);
+        this.scheduleCodexNativeActivityExpiry(stored);
+        this.publishCodexNativeActivity(activity);
+        return activity;
+    }
     async shutdown() {
         this.permissions.shutdown();
+        for (const timer of this.nativeActivityTimers.values())
+            clearTimeout(timer);
+        this.nativeActivityTimers.clear();
         for (const sessionId of this.runtimes.keys()) {
             this.store.cancelPromptJobs(sessionId, ['running'], 'hub shutdown');
             const session = this.store.getSession(sessionId);
@@ -501,6 +527,47 @@ export class ControlHub {
         if (!running)
             return;
         this.store.updatePromptJobStatus(running.id, status, { error, finishedAt: Date.now() });
+    }
+    getCodexNativeActivityView(threadId) {
+        const activity = this.store.getCodexNativeActivity(threadId);
+        return activity ? codexNativeActivityView(activity) : null;
+    }
+    publishCodexNativeActivity(activity) {
+        const managedSession = this.store.getSessionByCodexThreadId(activity.threadId);
+        this.events.publish({
+            type: 'codex.native.activity.updated',
+            sessionId: managedSession?.id ?? null,
+            payload: {
+                activity,
+                managedSessionId: managedSession?.id ?? null,
+            },
+        });
+    }
+    scheduleCodexNativeActivityExpiry(activity) {
+        const existing = this.nativeActivityTimers.get(activity.threadId);
+        if (existing)
+            clearTimeout(existing);
+        this.nativeActivityTimers.delete(activity.threadId);
+        if (!isLeaseBackedCodexNativeActivity(activity))
+            return;
+        const delayMs = Math.max(0, CODEX_NATIVE_ACTIVITY_TTL_MS - (Date.now() - activity.lastEventAt));
+        const timer = setTimeout(() => {
+            this.nativeActivityTimers.delete(activity.threadId);
+            this.expireCodexNativeActivity(activity.threadId);
+        }, delayMs);
+        timer.unref();
+        this.nativeActivityTimers.set(activity.threadId, timer);
+    }
+    expireCodexNativeActivity(threadId) {
+        const latest = this.store.getCodexNativeActivity(threadId);
+        if (!latest || !isLeaseBackedCodexNativeActivity(latest))
+            return;
+        if (codexNativeActivityStateAt(latest) !== 'unknown') {
+            this.scheduleCodexNativeActivityExpiry(latest);
+            return;
+        }
+        const activity = this.store.upsertCodexNativeActivity({ ...latest, state: 'unknown' });
+        this.publishCodexNativeActivity(activity);
     }
     failPromptJob(job, message) {
         const current = this.store.getPromptJob(job.id);

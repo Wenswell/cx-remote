@@ -85,6 +85,10 @@ export function readCodexSessionTranscriptFromFile(filePath, indexOrCodexHome, c
         messages: readTranscriptMessages(filePath),
     };
 }
+export function readCodexSessionMetaFromFile(filePath, indexOrCodexHome, codexHome = defaultCodexHome()) {
+    const index = indexOrCodexHome instanceof Map ? indexOrCodexHome : loadCodexSessionIndex(indexOrCodexHome || codexHome);
+    return readSessionMeta(filePath, index);
+}
 export function readCodexSessionPreviewFromFile(filePath, indexOrCodexHome, codexHome = defaultCodexHome(), messageLimit = DEFAULT_PREVIEW_MESSAGE_LIMIT) {
     const transcript = readCodexSessionTranscriptFromFile(filePath, indexOrCodexHome, codexHome);
     if (!transcript)

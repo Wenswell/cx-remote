@@ -247,6 +247,9 @@ export class HubServer {
                 localOnly: isLocalScope(c.req.query('scope')) || !c.req.query('nodeId'),
             }));
         });
+        app.post(route('/api/codex/hooks'), async (c) => {
+            return c.json({ ok: true, activity: this.hub.recordCodexHook(await c.req.json()) });
+        });
         app.get(route('/api/settings'), (c) => c.json({
             settings: maskSettings(this.config),
             fields: listSettingFields().map((field) => ({

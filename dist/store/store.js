@@ -113,6 +113,32 @@ export class Store {
     `).get(resolve(codexHome), threadId);
         return row ? decodeCodexSession(row) : null;
     }
+    upsertCodexNativeActivity(activity) {
+        this.db.prepare(`
+      INSERT INTO codex_native_activities (
+        threadId, nativeSessionId, cwd, transcriptPath, turnId, state,
+        lastEventName, lastEventAt, lastAssistantMessage, updatedAt
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(threadId) DO UPDATE SET
+        nativeSessionId = excluded.nativeSessionId,
+        cwd = excluded.cwd,
+        transcriptPath = excluded.transcriptPath,
+        turnId = excluded.turnId,
+        state = excluded.state,
+        lastEventName = excluded.lastEventName,
+        lastEventAt = excluded.lastEventAt,
+        lastAssistantMessage = excluded.lastAssistantMessage,
+        updatedAt = excluded.updatedAt
+    `).run(activity.threadId, activity.nativeSessionId, activity.cwd, activity.transcriptPath, activity.turnId, activity.state, activity.lastEventName, activity.lastEventAt, activity.lastAssistantMessage, Date.now());
+        return activity;
+    }
+    getCodexNativeActivity(threadId) {
+        const row = this.db.prepare(`
+      SELECT * FROM codex_native_activities
+      WHERE threadId = ?
+    `).get(threadId);
+        return row ? decodeCodexNativeActivity(row) : null;
+    }
     deleteCodexSessionByFilePath(codexHome, filePath) {
         const result = this.db.prepare(`
       DELETE FROM codex_sessions
@@ -463,6 +489,22 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_codex_sessions_home_file
         ON codex_sessions(codexHome, filePath);
 
+      CREATE TABLE IF NOT EXISTS codex_native_activities (
+        threadId TEXT PRIMARY KEY,
+        nativeSessionId TEXT NOT NULL,
+        cwd TEXT,
+        transcriptPath TEXT,
+        turnId TEXT,
+        state TEXT NOT NULL,
+        lastEventName TEXT NOT NULL,
+        lastEventAt INTEGER NOT NULL,
+        lastAssistantMessage TEXT,
+        updatedAt INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_codex_native_activities_updated
+        ON codex_native_activities(updatedAt DESC);
+
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         sessionId TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -595,6 +637,16 @@ function decodeCodexSession(row) {
     return {
         ...row,
         id: row.threadId,
+    };
+}
+function decodeCodexNativeActivity(row) {
+    const { updatedAt: _, ...activity } = row;
+    return {
+        ...activity,
+        cwd: activity.cwd ?? null,
+        transcriptPath: activity.transcriptPath ?? null,
+        turnId: activity.turnId ?? null,
+        lastAssistantMessage: activity.lastAssistantMessage ?? null,
     };
 }
 function decodeMessage(row) {

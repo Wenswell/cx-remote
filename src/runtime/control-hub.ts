@@ -3,11 +3,18 @@ import { basename, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config/config.js';
 import { resolveWorkspacePath } from '../config/config.js';
-import type { Approval, CodexEvent, CodexSessionConfig, CodexSessionConfigPatch, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session, SessionDetail } from '../domain/types.js';
+import type { Approval, CodexEvent, CodexNativeActivity, CodexSessionConfig, CodexSessionConfigPatch, ControlBinding, ControlType, Message, PromptJob, PromptJobStatus, Session, SessionDetail } from '../domain/types.js';
 import type { ApprovalQuery, MessageQuery, PromptJobQuery, Store } from '../store/store.js';
 import { truncate } from '../utils.js';
 import { logger } from '../logger.js';
 import { CodexRuntime } from '../agents/codex/runtime.js';
+import {
+  CODEX_NATIVE_ACTIVITY_TTL_MS,
+  codexNativeActivityStateAt,
+  codexNativeActivityView,
+  isLeaseBackedCodexNativeActivity,
+  normalizeCodexNativeHookEvent,
+} from '../agents/codex/hooks.js';
 import { readCodexSessionTranscript } from '../agents/codex/sessions.js';
 import { EventBus } from './event-bus.js';
 import { PermissionService } from './permissions.js';
@@ -36,6 +43,7 @@ const ACTIVE_PROMPT_JOB_STATUSES: PromptJobStatus[] = ['running', 'queued'];
 export class ControlHub {
   private readonly runtimes = new Map<string, RuntimeEntry>();
   private readonly pumpingSessions = new Set<string>();
+  private readonly nativeActivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     readonly config: AppConfig,
@@ -159,6 +167,7 @@ export class ControlHub {
       messages: this.store.listMessages(session.id),
       approvals: this.store.listApprovals({ sessionId: session.id, status: 'pending' }),
       queue: this.store.listPromptJobs({ sessionId: session.id, statuses: ACTIVE_PROMPT_JOB_STATUSES, limit: 50 }),
+      nativeCodexActivity: session.codexThreadId ? this.getCodexNativeActivityView(session.codexThreadId) : null,
       eventCursor: this.latestEventId(session.id),
     };
   }
@@ -337,8 +346,30 @@ export class ControlHub {
     await this.permissions.resolveApproval(approvalId, decision, source);
   }
 
+  recordCodexHook(input: unknown): CodexNativeActivity {
+    const event = normalizeCodexNativeHookEvent(input);
+    if (!event) throw new Error('Invalid Codex hook payload');
+    const stored = this.store.upsertCodexNativeActivity({
+      nativeSessionId: event.nativeSessionId,
+      threadId: event.threadId,
+      cwd: event.cwd,
+      transcriptPath: event.transcriptPath,
+      turnId: event.turnId,
+      state: event.state,
+      lastEventName: event.lastEventName,
+      lastEventAt: event.lastEventAt,
+      lastAssistantMessage: event.lastAssistantMessage,
+    });
+    const activity = codexNativeActivityView(stored);
+    this.scheduleCodexNativeActivityExpiry(stored);
+    this.publishCodexNativeActivity(activity);
+    return activity;
+  }
+
   async shutdown(): Promise<void> {
     this.permissions.shutdown();
+    for (const timer of this.nativeActivityTimers.values()) clearTimeout(timer);
+    this.nativeActivityTimers.clear();
     for (const sessionId of this.runtimes.keys()) {
       this.store.cancelPromptJobs(sessionId, ['running'], 'hub shutdown');
       const session = this.store.getSession(sessionId);
@@ -572,6 +603,49 @@ export class ControlHub {
     const running = this.store.getRunningPromptJob(sessionId);
     if (!running) return;
     this.store.updatePromptJobStatus(running.id, status, { error, finishedAt: Date.now() });
+  }
+
+  private getCodexNativeActivityView(threadId: string): CodexNativeActivity | null {
+    const activity = this.store.getCodexNativeActivity(threadId);
+    return activity ? codexNativeActivityView(activity) : null;
+  }
+
+  private publishCodexNativeActivity(activity: CodexNativeActivity): void {
+    const managedSession = this.store.getSessionByCodexThreadId(activity.threadId);
+    this.events.publish({
+      type: 'codex.native.activity.updated',
+      sessionId: managedSession?.id ?? null,
+      payload: {
+        activity,
+        managedSessionId: managedSession?.id ?? null,
+      },
+    });
+  }
+
+  private scheduleCodexNativeActivityExpiry(activity: CodexNativeActivity): void {
+    const existing = this.nativeActivityTimers.get(activity.threadId);
+    if (existing) clearTimeout(existing);
+    this.nativeActivityTimers.delete(activity.threadId);
+    if (!isLeaseBackedCodexNativeActivity(activity)) return;
+
+    const delayMs = Math.max(0, CODEX_NATIVE_ACTIVITY_TTL_MS - (Date.now() - activity.lastEventAt));
+    const timer = setTimeout(() => {
+      this.nativeActivityTimers.delete(activity.threadId);
+      this.expireCodexNativeActivity(activity.threadId);
+    }, delayMs);
+    timer.unref();
+    this.nativeActivityTimers.set(activity.threadId, timer);
+  }
+
+  private expireCodexNativeActivity(threadId: string): void {
+    const latest = this.store.getCodexNativeActivity(threadId);
+    if (!latest || !isLeaseBackedCodexNativeActivity(latest)) return;
+    if (codexNativeActivityStateAt(latest) !== 'unknown') {
+      this.scheduleCodexNativeActivityExpiry(latest);
+      return;
+    }
+    const activity = this.store.upsertCodexNativeActivity({ ...latest, state: 'unknown' });
+    this.publishCodexNativeActivity(activity);
   }
 
   private failPromptJob(job: PromptJob, message: string): void {
