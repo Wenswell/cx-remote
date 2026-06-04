@@ -995,7 +995,7 @@ function writeCodexSession(
         timestamp,
         cwd,
         originator: 'codex-tui',
-        thread_source: 'local',
+        thread_source: 'user',
       },
     }),
     JSON.stringify({ timestamp, type: 'event_msg', payload: { type: 'user_message', message: 'event message title' } }),

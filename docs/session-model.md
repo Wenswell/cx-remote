@@ -45,7 +45,7 @@ Adopt Codex session
 - Web uses a node-scoped path-first sidebar: recent sessions are aggregated across nodes, while the selected workspace directory lists Hub-managed sessions and adoptable native Codex sessions for that node and cwd.
 - Remote session ids are namespaced as `<nodeId>::<sessionId>`. Local session ids keep their original value.
 - Web adoption lists native Codex sessions by selected node and workspace directory, mirroring Codex resume cwd filtering on that node, and previews the transcript before adoption.
-- Native Codex session discovery uses a local SQLite index on the owning node. Startup scans `~/.codex/session_index.jsonl` and `~/.codex/sessions/**/*.jsonl` once, then a watcher batches file changes into incremental upserts.
+- Native Codex session discovery uses a local SQLite index on the owning node. Startup scans `~/.codex/session_index.jsonl` and `~/.codex/sessions/**/*.jsonl` once, indexes Codex user threads, and skips subagent/non-user threads for the default Web adoption list. Web requests the latest 3 native sessions for the selected directory. A watcher batches later file changes into incremental upserts.
 - Web adoption imports the native Codex transcript into Hub messages before opening the session.
 - CLI/API adoption registers an explicit Codex thread id under Hub control on the selected node. Add `--import` or `importTranscript: true` to import the stored transcript into Hub messages.
 - Runtime startup resumes an adopted or previously persisted Codex thread before starting the next turn.

@@ -20,6 +20,7 @@ test('Codex resume sessions are filtered by cwd and sorted by updated time', () 
     writeCodexSession(codexHome, 'thread-older', cwd, '2026-06-02T09:00:00.000Z');
     writeCodexSession(codexHome, 'thread-newer', cwd, '2026-06-03T09:00:00.000Z');
     writeCodexSession(codexHome, 'thread-other', otherCwd, '2026-06-03T11:00:00.000Z');
+    writeCodexSession(codexHome, 'thread-subagent', cwd, '2026-06-03T12:00:00.000Z', 'Subagent task', [], 'subagent');
 
     const sessions = listCodexResumeSessions({ cwd, codexHome });
 
@@ -114,7 +115,15 @@ test('Codex transcript import reads canonical response item messages only', () =
   }
 });
 
-function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp: string, message = 'ignored', extraLines: string[] = []): void {
+function writeCodexSession(
+  codexHome: string,
+  id: string,
+  cwd: string,
+  timestamp: string,
+  message = 'ignored',
+  extraLines: string[] = [],
+  threadSource = 'user',
+): void {
   const dir = join(codexHome, 'sessions', '2026', '06', '03');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, `rollout-${id}.jsonl`), [
@@ -126,7 +135,7 @@ function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp
         timestamp,
         cwd,
         originator: 'codex-tui',
-        thread_source: 'local',
+        thread_source: threadSource,
       },
     }),
     JSON.stringify({

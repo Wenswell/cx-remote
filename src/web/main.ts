@@ -227,7 +227,7 @@ const apiPath = {
   sessions: appPath('/api/sessions'),
   sessionsForCwd: (nodeId: string, cwd: string) => appPath(`/api/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}`),
   adoptSession: appPath('/api/sessions/adopt'),
-  codexSessions: (nodeId: string, cwd: string) => appPath(`/api/codex/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}&limit=100`),
+  codexSessions: (nodeId: string, cwd: string) => appPath(`/api/codex/sessions?nodeId=${encodeURIComponent(nodeId)}&cwd=${encodeURIComponent(cwd)}&limit=3`),
   codexSessionPreview: (nodeId: string, threadId: string) => appPath(`/api/codex/sessions/${encodeURIComponent(threadId)}/preview?nodeId=${encodeURIComponent(nodeId)}`),
   files: (workspaceId: string, path: string) => appPath(`/api/files?workspaceId=${encodeURIComponent(workspaceId)}&path=${encodeURIComponent(path)}`),
   session: (id: string, suffix = '') => appPath(`/api/sessions/${encodeURIComponent(id)}${suffix}`),

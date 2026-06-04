@@ -141,7 +141,7 @@ function writeCodexSession(codexHome: string, id: string, cwd: string, timestamp
         timestamp,
         cwd,
         originator: 'codex-tui',
-        thread_source: 'local',
+        thread_source: 'user',
       },
     }),
     JSON.stringify({ timestamp, type: 'event_msg', payload: { type: 'user_message', message: `Title for ${id}` } }),

@@ -80,6 +80,7 @@ export function listCodexSessionFilesUnder(root: string): string[] {
 export function readCodexSessionRecord(filePath: string, index: Map<string, SessionIndexEntry>, codexHome = defaultCodexHome()): CodexSessionRecord | null {
   const session = readSessionMeta(filePath, index);
   if (!session) return null;
+  if (session.threadSource !== 'user') return null;
   const cwdKey = codexCwdKeyOrNull(session.cwd);
   if (!cwdKey) return null;
   const resolvedFilePath = resolve(filePath);

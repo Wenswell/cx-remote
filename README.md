@@ -34,7 +34,7 @@ cx-remote --help
 Stable release install:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.3
+pnpm add -g github:Wenswell/cx-remote#v0.1.4
 ```
 
 When pnpm reports that the global bin directory is outside `PATH`, run `pnpm setup`, open a new shell, and run the install command again.
@@ -105,7 +105,7 @@ https://gateway.1662803.xyz/apps/cx-remote/?token=<access-token>
 The token URL is a bootstrap login. Hub stores the access token in an HttpOnly cookie and redirects to the clean Web URL before serving the console, assets, REST APIs, and EventSource streams. Opening Web without a valid token cookie returns `401`.
 The browser console is a Vite + Shoelace app served from `dist/web` by the Hub.
 Web shows recently used Hub-managed sessions at the top of the sidebar. The workspace panel selects a directory, then shows Hub-managed sessions for that directory and native Codex sessions that can be adopted into Hub. On mobile, the sidebar opens from the top-left sessions button.
-Native Codex sessions are indexed on each owning node in `~/.cx-remote/cx-remote.db`. Startup builds a baseline from `~/.codex/session_index.jsonl` and `~/.codex/sessions/**/*.jsonl`; a file watcher batches later changes into small SQLite updates, so Web path changes query the local index instead of scanning the full Codex sessions tree.
+Native Codex user sessions are indexed on each owning node in `~/.cx-remote/cx-remote.db`. Startup builds a baseline from `~/.codex/session_index.jsonl` and `~/.codex/sessions/**/*.jsonl`; a file watcher batches later changes into small SQLite updates, so Web path changes query the local index instead of scanning the full Codex sessions tree. Subagent and non-user threads stay out of the default Web adoption list, and Web requests the latest 3 native sessions for the selected directory.
 
 The Web console can:
 
@@ -179,7 +179,7 @@ Browser
 Install the same global CLI on every Hub node:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.3
+pnpm add -g github:Wenswell/cx-remote#v0.1.4
 cx-remote --help
 ```
 
@@ -202,7 +202,7 @@ Directory browsing through the gateway keeps the peer workspace identity. Web us
 Peer Hub on `10.126.126.2`:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.3
+pnpm add -g github:Wenswell/cx-remote#v0.1.4
 cx-remote config set cluster.name mac
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030
@@ -215,7 +215,7 @@ cx-remote hub
 Peer Hub on `10.126.126.3`:
 
 ```bash
-pnpm add -g github:Wenswell/cx-remote#v0.1.3
+pnpm add -g github:Wenswell/cx-remote#v0.1.4
 cx-remote config set cluster.name mint
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030

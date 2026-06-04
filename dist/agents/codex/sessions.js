@@ -30,6 +30,8 @@ export function readCodexSessionRecord(filePath, index, codexHome = defaultCodex
     const session = readSessionMeta(filePath, index);
     if (!session)
         return null;
+    if (session.threadSource !== 'user')
+        return null;
     const cwdKey = codexCwdKeyOrNull(session.cwd);
     if (!cwdKey)
         return null;
