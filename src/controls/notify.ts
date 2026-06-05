@@ -1,7 +1,4 @@
-import { readFile } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
-import { join } from 'node:path';
-import { defaultConfigHome } from '../config/config.js';
 import { asRecord } from '../utils.js';
 
 export type CodexNotifyPayload = {
@@ -81,25 +78,17 @@ const maxInlineUserChars = 240;
 const maxHeaderReplyChars = 96;
 const maxAnswerPreviewChars = 360;
 
-export function defaultNoticeEnvPath(): string {
-  return join(defaultConfigHome(), 'notice.env');
-}
-
 export async function forwardNotify(payloadInput: unknown, options: {
   fetchImpl?: typeof fetch;
   webhook?: string;
-  env?: NodeJS.ProcessEnv;
-  noticeEnvPath?: string;
 } = {}): Promise<NotifyForwardResult> {
   const payload = parsePayload(payloadInput);
   if (payload.client !== 'codex-tui') {
     return { sent: false, skippedReason: 'non-main conversation' };
   }
 
-  const webhook = options.webhook || await readWebhook(options.env ?? process.env, options.noticeEnvPath ?? defaultNoticeEnvPath());
-  if (!webhook) {
-    throw new Error('FEISHU_BOT_WEBHOOK is required in environment or ~/.cx-remote/notice.env');
-  }
+  const webhook = options.webhook;
+  if (!webhook) throw new Error('notifications.feishu.webhook is required');
   validateWebhook(webhook);
 
   await postFeishu(
@@ -118,33 +107,6 @@ function parsePayload(value: unknown): CodexNotifyPayload {
   const payload = asRecord(value);
   if (!payload) throw new Error('Codex notify payload must be a JSON object');
   return payload as CodexNotifyPayload;
-}
-
-async function readWebhook(env: NodeJS.ProcessEnv, filePath: string): Promise<string> {
-  const webhook = env.FEISHU_BOT_WEBHOOK || await readWebhookFromFile(filePath);
-  if (!webhook) return '';
-  validateWebhook(webhook);
-  return webhook;
-}
-
-async function readWebhookFromFile(filePath: string): Promise<string> {
-  let text = '';
-  try {
-    text = await readFile(filePath, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
-    throw error;
-  }
-
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const match = /^(?:export\s+)?FEISHU_BOT_WEBHOOK\s*=\s*(.*)$/.exec(trimmed);
-    if (!match) continue;
-    return stripEnvQuotes(match[1].trim());
-  }
-
-  return '';
 }
 
 function validateWebhook(value: string): void {
@@ -414,14 +376,4 @@ function parseJson(text: string): unknown {
   } catch {
     return null;
   }
-}
-
-function stripEnvQuotes(value: string): string {
-  if (
-    (value.startsWith('"') && value.endsWith('"'))
-    || (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
 }

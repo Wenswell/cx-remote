@@ -108,7 +108,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         case 'notify': {
             const payload = await readJsonFromStdin();
             const activity = await client.post('/api/codex/hooks', payload);
-            const feishu = await forwardNotify(payload);
+            const feishu = await forwardNotify(payload, { webhook: config.notifications.feishu.webhook });
             if (hasFlag(argv, '--json'))
                 console.log(JSON.stringify({ ...activity, feishu }, null, 2));
             return;
@@ -577,7 +577,7 @@ function printNotifyHelp() {
         '  hooks = true',
         '',
         'Feishu config:',
-        '  FEISHU_BOT_WEBHOOK=...',
-        '  ~/.cx-remote/notice.env',
+        '  notifications.feishu.webhook',
+        '  cx-remote config set notifications.feishu.webhook <webhook>',
     ].join('\n'));
 }

@@ -27,6 +27,7 @@ export const SETTING_FIELDS: SettingField[] = [
   { key: 'codex.reasoningEffort', path: ['agents', 'codex', 'reasoningEffort'], type: 'enum', env: 'CODEX_REASONING_EFFORT', choices: ['default', ...CODEX_REASONING_EFFORT_OPTIONS], description: 'Codex reasoning effort' },
   { key: 'codex.permissionMode', path: ['agents', 'codex', 'permissionMode'], type: 'enum', env: 'CODEX_PERMISSION_MODE', choices: ['default', 'read-only', 'safe-yolo', 'yolo'], description: 'Codex permission mode' },
   { key: 'codex.search', path: ['agents', 'codex', 'search'], type: 'boolean', env: 'CODEX_SEARCH', description: 'Codex web search flag' },
+  { key: 'notifications.feishu.webhook', path: ['notifications', 'feishu', 'webhook'], type: 'string', env: 'FEISHU_BOT_WEBHOOK', secret: true, description: 'Feishu bot webhook' },
   { key: 'web.enabled', path: ['controls', 'web', 'enabled'], type: 'boolean', readOnly: true, description: 'Web control availability' },
   { key: 'cli.enabled', path: ['controls', 'cli', 'enabled'], type: 'boolean', readOnly: true, description: 'CLI control availability' },
   { key: 'telegram.enabled', path: ['controls', 'telegram', 'enabled'], type: 'boolean', env: 'TG_ENABLED', restartRequired: true, description: 'Telegram control availability' },

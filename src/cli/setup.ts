@@ -27,6 +27,7 @@ export async function runSetup(): Promise<void> {
     const telegramAllowedUsers = telegramEnabled ? splitList(await ask(rl, 'Telegram allowed users', current.controls.telegram.allowedUsers.join(','))) : current.controls.telegram.allowedUsers;
     const telegramAllowedChats = telegramEnabled ? splitList(await ask(rl, 'Telegram allowed chats', current.controls.telegram.allowedChats.join(','))) : current.controls.telegram.allowedChats;
     const requireMention = telegramEnabled ? await yesNo(rl, 'Require mention in groups', current.controls.telegram.requireMention) : current.controls.telegram.requireMention;
+    const feishuWebhook = await askSecret(rl, 'Feishu webhook', current.notifications.feishu.webhook);
     const codexBin = await ask(rl, 'Codex bin', current.agents.codex.bin || 'codex');
     const codexModel = await askChoice(rl, 'Codex model', ['auto', ...CODEX_MODEL_OPTIONS], current.agents.codex.model);
     const reasoningEffort = await askChoice(rl, 'Codex reasoning effort', ['default', ...CODEX_REASONING_EFFORT_OPTIONS], current.agents.codex.reasoningEffort);
@@ -74,6 +75,13 @@ export async function runSetup(): Promise<void> {
           allowedUsers: telegramAllowedUsers,
           allowedChats: telegramAllowedChats,
           requireMention,
+        },
+      },
+      notifications: {
+        ...current.notifications,
+        feishu: {
+          ...current.notifications.feishu,
+          webhook: feishuWebhook,
         },
       },
       approvals: {

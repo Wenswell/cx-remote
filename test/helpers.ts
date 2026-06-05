@@ -146,6 +146,11 @@ export function createConfig(dbPath: string): AppConfig {
         requireMention: false,
       },
     },
+    notifications: {
+      feishu: {
+        webhook: '',
+      },
+    },
     approvals: {
       autoApproveCommands: [],
       autoApproveReadonly: false,

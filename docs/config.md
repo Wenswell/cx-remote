@@ -84,6 +84,7 @@ The Web page is served at `/apps/cx-remote/`, assets at `/apps/cx-remote/assets/
 | `codex.reasoningEffort` | enum | `CODEX_REASONING_EFFORT` | no |
 | `codex.permissionMode` | enum | `CODEX_PERMISSION_MODE` | no |
 | `codex.search` | boolean | `CODEX_SEARCH` | no |
+| `notifications.feishu.webhook` | string | `FEISHU_BOT_WEBHOOK` | no |
 | `telegram.enabled` | boolean | `TG_ENABLED` | yes |
 | `telegram.botToken` | string | `TG_BOT_TOKEN` | yes |
 | `telegram.allowedUsers` | string[] | `TG_ALLOWED_USERS` | yes |
@@ -149,6 +150,11 @@ The Web page is served at `/apps/cx-remote/`, assets at `/apps/cx-remote/assets/
       "allowedUsers": [],
       "allowedChats": [],
       "requireMention": false
+    }
+  },
+  "notifications": {
+    "feishu": {
+      "webhook": ""
     }
   },
   "approvals": {

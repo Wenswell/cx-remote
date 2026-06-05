@@ -38,6 +38,7 @@ export async function runDoctor(client?: HubProbe): Promise<void> {
     ['Workspace', workspaceChecks(config)],
     ['Storage', storageChecks(config)],
     ['Telegram', telegramChecks(config)],
+    ['Notifications', notificationChecks(config)],
   ];
 
   for (const [title, checks] of sections) printSection(title, checks);
@@ -88,6 +89,13 @@ function telegramChecks(config: AppConfig): Check[] {
     { name: 'allowedUsers', status: 'ok', detail: String(config.controls.telegram.allowedUsers.length) },
     { name: 'allowedChats', status: 'ok', detail: String(config.controls.telegram.allowedChats.length) },
     { name: 'requireMention', status: 'ok', detail: String(config.controls.telegram.requireMention) },
+  ];
+}
+
+function notificationChecks(config: AppConfig): Check[] {
+  const webhook = config.notifications.feishu.webhook;
+  return [
+    { name: 'feishuWebhook', status: webhook ? 'ok' : 'warn', detail: webhook ? maskSecret(webhook) : 'missing' },
   ];
 }
 

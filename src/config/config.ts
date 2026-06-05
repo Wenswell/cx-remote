@@ -57,6 +57,11 @@ export const settingsSchema = z.object({
       requireMention: z.boolean().default(false),
     }),
   }),
+  notifications: z.object({
+    feishu: z.object({
+      webhook: z.string().default(''),
+    }).default({ webhook: '' }),
+  }).default({ feishu: { webhook: '' } }),
   approvals: z.object({
     autoApproveCommands: z.array(z.string()).default([]),
     autoApproveReadonly: z.boolean().default(false),
@@ -93,6 +98,9 @@ export type ConfigPatch = Partial<{
     web: Partial<Settings['controls']['web']>;
     cli: Partial<Settings['controls']['cli']>;
     telegram: Partial<Settings['controls']['telegram']>;
+  }>;
+  notifications: Partial<{
+    feishu: Partial<Settings['notifications']['feishu']>;
   }>;
   approvals: Partial<Settings['approvals']>;
   storage: Partial<Settings['storage']>;
@@ -191,6 +199,11 @@ export function patchSettings(patch: ConfigPatch): Settings {
       cli: { ...current.controls.cli, ...patch.controls?.cli },
       telegram: { ...current.controls.telegram, ...patch.controls?.telegram },
     },
+    notifications: {
+      ...current.notifications,
+      ...patch.notifications,
+      feishu: { ...current.notifications.feishu, ...patch.notifications?.feishu },
+    },
     approvals: { ...current.approvals, ...patch.approvals },
     storage: { ...current.storage, ...patch.storage },
     log: { ...current.log, ...patch.log },
@@ -204,6 +217,7 @@ export function validateSettings(input: unknown): Settings {
   const settings = settingsSchema.parse(input) as Settings;
   validatePublicUrl(settings);
   validateTelegram(settings);
+  validateNotifications(settings);
   validateCluster(settings);
   return settings;
 }
@@ -298,6 +312,11 @@ export function createDefaultSettings(home = defaultConfigHome()): Settings {
         requireMention: false,
       },
     },
+    notifications: {
+      feishu: {
+        webhook: '',
+      },
+    },
     approvals: {
       autoApproveCommands: [],
       autoApproveReadonly: false,
@@ -355,6 +374,7 @@ function applyEnv(raw: unknown): unknown {
   setEnvPath(next, ['agents', 'codex', 'reasoningEffort'], process.env.CODEX_REASONING_EFFORT);
   setEnvPath(next, ['agents', 'codex', 'permissionMode'], process.env.CODEX_PERMISSION_MODE as CodexPermissionMode | undefined);
   setEnvPath(next, ['agents', 'codex', 'search'], boolEnv(process.env.CODEX_SEARCH));
+  setEnvPath(next, ['notifications', 'feishu', 'webhook'], process.env.FEISHU_BOT_WEBHOOK);
   setEnvPath(next, ['controls', 'telegram', 'enabled'], boolEnv(process.env.TG_ENABLED));
   setEnvPath(next, ['controls', 'telegram', 'botToken'], process.env.TG_BOT_TOKEN);
   setEnvPath(next, ['controls', 'telegram', 'allowedUsers'], listEnv(process.env.TG_ALLOWED_USERS));
@@ -454,6 +474,15 @@ function listEnv(value: string | undefined): string[] | undefined {
 function validateTelegram(config: Settings): void {
   if (config.controls.telegram.enabled && !config.controls.telegram.botToken) {
     throw new Error('controls.telegram.botToken is required when Telegram is enabled');
+  }
+}
+
+function validateNotifications(config: Settings): void {
+  const webhook = config.notifications.feishu.webhook;
+  if (!webhook) return;
+  const url = new URL(webhook);
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('notifications.feishu.webhook must be an http or https URL');
   }
 }
 
