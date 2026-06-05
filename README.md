@@ -158,14 +158,24 @@ Web session selection follows a path-first flow: choose a workspace directory, s
 External native Codex CLI runs can report activity for an adopted thread through Codex hooks:
 
 ```toml
-# One hook command: argv[0] = cx-remote, argv[1] = codex-hook
-notify = ["cx-remote", "codex-hook"]
+# Use one wrapper command so existing hooks keep working.
+notify = ["codex-hook-fanout"]
 
 [features]
 hooks = true
 ```
 
-`cx-remote codex-hook` reads the Codex hook JSON from stdin and sends it to the local Hub. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
+The wrapper should forward the same stdin payload to your existing hook command and to `cx-remote codex-hook`. `cx-remote codex-hook` reads the Codex hook JSON from stdin and sends it to the local Hub. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
+
+Example wrapper:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+printf '%s' "$payload" | codex-notice hook
+printf '%s' "$payload" | cx-remote codex-hook
+```
 
 `cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

@@ -246,14 +246,14 @@ Deleting a Hub session removes Hub messages, queue, approvals, control state, an
 External native Codex CLI runs report lifecycle activity through Codex hooks:
 
 ```toml
-# One hook command: argv[0] = cx-remote, argv[1] = codex-hook
-notify = ["cx-remote", "codex-hook"]
+# Use one wrapper command so existing hooks keep working.
+notify = ["codex-hook-fanout"]
 
 [features]
 hooks = true
 ```
 
-`cx-remote codex-hook` reads one hook payload from stdin and forwards it to `POST /api/codex/hooks`. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
+The wrapper should forward the same stdin payload to your existing hook command and to `cx-remote codex-hook`. `cx-remote codex-hook` reads one hook payload from stdin and forwards it to `POST /api/codex/hooks`. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
 
 State mapping:
 

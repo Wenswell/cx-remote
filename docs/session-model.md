@@ -41,19 +41,27 @@ Adopt Codex session
 ```text
 External native Codex CLI activity
   ~/.codex/config.toml
-    # One hook command: argv[0] = cx-remote, argv[1] = codex-hook
-    notify = ["cx-remote", "codex-hook"]
+    # Use one wrapper command so existing hooks keep working.
+    notify = ["codex-hook-fanout"]
     [features]
     hooks = true
       │ hook JSON on stdin
       ▼
-  cx-remote codex-hook
+  codex-hook-fanout
       │ POST /api/codex/hooks
       ▼
   codex_native_activities row by Codex thread id
       │
       ├─ GET /api/sessions/:id -> nativeCodexActivity
       └─ GET /api/events -> codex.native.activity.updated
+```
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+printf '%s' "$payload" | codex-notice hook
+printf '%s' "$payload" | cx-remote codex-hook
 ```
 
 ## Rules
