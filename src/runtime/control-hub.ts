@@ -15,7 +15,7 @@ import {
   isLeaseBackedCodexNativeActivity,
   normalizeCodexNativeHookEvent,
 } from '../agents/codex/hooks.js';
-import { readCodexSessionTranscript } from '../agents/codex/sessions.js';
+import { readCodexSessionNativeActivitySnapshot, readCodexSessionTranscript } from '../agents/codex/sessions.js';
 import { EventBus } from './event-bus.js';
 import { PermissionService } from './permissions.js';
 
@@ -91,9 +91,21 @@ export class ControlHub {
     if (transcript && resolve(transcript.session.cwd) !== cwd) {
       throw new Error(`Codex thread cwd does not match selected directory: ${transcript.session.cwd}`);
     }
+    const snapshotActivity = readCodexSessionNativeActivitySnapshot({ threadId, codexHome: input.codexHome });
+    if (snapshotActivity && snapshotActivity.cwd && resolve(snapshotActivity.cwd) !== cwd) {
+      throw new Error(`Codex thread cwd does not match selected directory: ${snapshotActivity.cwd}`);
+    }
     const session = this.createSessionRecord({ ...input, codexThreadId: threadId });
     const importedMessages = transcript ? this.importTranscript(session.id, threadId, transcript.messages) : 0;
-    logger.info('codex thread adopted', { sessionKey: session.id, threadId, cwd: session.cwd, importedMessages });
+    const activity = this.resolveAdoptionNativeActivity(threadId, snapshotActivity);
+    if (activity) this.recordCodexNativeActivity(activity);
+    logger.info('codex thread adopted', {
+      sessionKey: session.id,
+      threadId,
+      cwd: session.cwd,
+      importedMessages,
+      importedNativeActivity: Boolean(activity),
+    });
     return session;
   }
 
@@ -349,7 +361,7 @@ export class ControlHub {
   recordCodexHook(input: unknown): CodexNativeActivity {
     const event = normalizeCodexNativeHookEvent(input);
     if (!event) throw new Error('Invalid Codex hook payload');
-    const stored = this.store.upsertCodexNativeActivity({
+    return this.recordCodexNativeActivity({
       nativeSessionId: event.nativeSessionId,
       threadId: event.threadId,
       cwd: event.cwd,
@@ -360,10 +372,24 @@ export class ControlHub {
       lastEventAt: event.lastEventAt,
       lastAssistantMessage: event.lastAssistantMessage,
     });
-    const activity = codexNativeActivityView(stored);
+  }
+
+  private recordCodexNativeActivity(activity: CodexNativeActivity): CodexNativeActivity {
+    const stored = this.store.upsertCodexNativeActivity(activity);
+    const view = codexNativeActivityView(stored);
     this.scheduleCodexNativeActivityExpiry(stored);
-    this.publishCodexNativeActivity(activity);
-    return activity;
+    this.publishCodexNativeActivity(view);
+    return view;
+  }
+
+  private resolveAdoptionNativeActivity(
+    threadId: string,
+    snapshot: CodexNativeActivity | null,
+  ): CodexNativeActivity | null {
+    const existing = this.store.getCodexNativeActivity(threadId);
+    if (!existing) return snapshot;
+    const existingView = codexNativeActivityView(existing);
+    return existingView.state === 'unknown' ? snapshot ?? existingView : existing;
   }
 
   async shutdown(): Promise<void> {

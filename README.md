@@ -153,7 +153,7 @@ cx-remote approve <approval-id> approved
 cx-remote doctor
 ```
 
-Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-remote adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
+Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages and records the latest native activity snapshot before opening the session. `cx-remote adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
 External native Codex CLI runs can report activity for an adopted thread through `cx-remote notify`:
 
@@ -164,7 +164,7 @@ notify = ["cx-remote", "notify"]
 hooks = true
 ```
 
-Set `notifications.feishu.webhook` in `~/.cx-remote/settings.json`, or use `cx-remote config set notifications.feishu.webhook <webhook>`. `cx-remote notify` reads the Codex hook JSON from stdin, sends it to the local Hub, and forwards the same payload to Feishu for main Codex TUI conversations. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
+Set `notifications.feishu.webhook` in `~/.cx-remote/settings.json`, or use `cx-remote config set notifications.feishu.webhook <webhook>`. `cx-remote notify` reads the Codex hook JSON from stdin, sends it to the local Hub, and forwards the same payload to Feishu for main Codex TUI conversations. The Hub stores hook activity by Codex thread id even before adoption; after adoption, the same row is associated with the Hub session through `codexThreadId`. Existing unexpired hook activity takes priority, and adoption uses a transcript snapshot when hook activity is missing or expired. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active states expire to `unknown` after 60 seconds without a newer hook or adoption snapshot. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
 
 `cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

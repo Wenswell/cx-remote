@@ -826,6 +826,170 @@ test('session adopt API imports Codex transcript when requested', async () => {
   }
 });
 
+test('session adopt API records active Codex transcript snapshot', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-active', process.cwd(), 'Active thread', '2026-06-03T10:00:00.000Z', [], [
+      codexEvent('2026-06-03T10:01:00.000Z', {
+        type: 'task_started',
+        turn_id: 'turn-active',
+        started_at: 1780480860,
+      }),
+      {
+        timestamp: '2026-06-03T10:01:01.000Z',
+        type: 'turn_context',
+        payload: {
+          turn_id: 'turn-active',
+          cwd: process.cwd(),
+        },
+      },
+    ]);
+
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        threadId: 'thread-active',
+        cwd: process.cwd(),
+        title: 'Active thread',
+      }),
+    });
+    const session = await json<{ id: string; codexThreadId: string | null }>(response);
+    const detail = await json<{
+      nativeCodexActivity: {
+        state: string;
+        threadId: string;
+        turnId: string | null;
+        lastEventName: string;
+        transcriptPath: string | null;
+      } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(response.status, 201);
+    assert.equal(session.codexThreadId, 'thread-active');
+    assert.equal(detail.nativeCodexActivity?.state, 'working');
+    assert.equal(detail.nativeCodexActivity?.threadId, 'thread-active');
+    assert.equal(detail.nativeCodexActivity?.turnId, 'turn-active');
+    assert.equal(detail.nativeCodexActivity?.lastEventName, 'turn_context');
+    assert.ok(detail.nativeCodexActivity?.transcriptPath?.endsWith('rollout-thread-active.jsonl'));
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
+test('session adopt API keeps fresher Codex hook activity over transcript snapshot', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-hook-first', process.cwd(), 'Hook first thread', '2026-06-03T10:00:00.000Z', [], [
+      codexEvent('2026-06-03T10:01:00.000Z', {
+        type: 'task_started',
+        turn_id: 'turn-transcript',
+        started_at: 1780480860,
+      }),
+    ]);
+    context.store.upsertCodexNativeActivity({
+      nativeSessionId: 'thread-hook-first',
+      threadId: 'thread-hook-first',
+      cwd: process.cwd(),
+      transcriptPath: null,
+      turnId: 'turn-hook',
+      state: 'waiting_approval',
+      lastEventName: 'permissionrequest',
+      lastEventAt: Date.now(),
+      lastAssistantMessage: null,
+    });
+
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        threadId: 'thread-hook-first',
+        cwd: process.cwd(),
+        title: 'Hook first thread',
+      }),
+    });
+    const session = await json<{ id: string }>(response);
+    const detail = await json<{
+      nativeCodexActivity: {
+        state: string;
+        turnId: string | null;
+        lastEventName: string;
+      } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(response.status, 201);
+    assert.equal(detail.nativeCodexActivity?.state, 'waiting_approval');
+    assert.equal(detail.nativeCodexActivity?.turnId, 'turn-hook');
+    assert.equal(detail.nativeCodexActivity?.lastEventName, 'permissionrequest');
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
+test('session adopt API records completed Codex transcript snapshot', async () => {
+  const codexHome = mkdtempSync(join(tmpdir(), 'cx-remote-codex-home-'));
+  const context = createTestApp({ codexHome });
+
+  try {
+    writeCodexSession(codexHome, 'thread-complete', process.cwd(), 'Complete thread', '2026-06-03T10:00:00.000Z', [], [
+      codexEvent('2026-06-03T10:01:00.000Z', {
+        type: 'task_started',
+        turn_id: 'turn-complete',
+        started_at: 1780480860,
+      }),
+      codexEvent('2026-06-03T10:02:00.000Z', {
+        type: 'task_complete',
+        turn_id: 'turn-complete',
+        last_agent_message: 'completed answer',
+        completed_at: 1780480920,
+      }),
+    ]);
+
+    const response = await context.app.request('/api/sessions/adopt', {
+      method: 'POST',
+      headers: jsonHeaders(context.config),
+      body: JSON.stringify({
+        threadId: 'thread-complete',
+        cwd: process.cwd(),
+        title: 'Complete thread',
+      }),
+    });
+    const session = await json<{ id: string }>(response);
+    const detail = await json<{
+      nativeCodexActivity: {
+        state: string;
+        turnId: string | null;
+        lastEventName: string;
+        lastAssistantMessage: string | null;
+      } | null;
+    }>(await context.app.request(
+      `/api/sessions/${encodeURIComponent(session.id)}`,
+      { headers: authHeaders(context.config) },
+    ));
+
+    assert.equal(response.status, 201);
+    assert.equal(detail.nativeCodexActivity?.state, 'idle');
+    assert.equal(detail.nativeCodexActivity?.turnId, null);
+    assert.equal(detail.nativeCodexActivity?.lastEventName, 'task_complete');
+    assert.equal(detail.nativeCodexActivity?.lastAssistantMessage, 'completed answer');
+  } finally {
+    await closeTestHub(context);
+    rmSync(codexHome, { recursive: true, force: true });
+  }
+});
+
 test('session create API stores runtime config overrides', async () => {
   const context = createTestApp();
 
@@ -1179,6 +1343,7 @@ function writeCodexSession(
   title: string,
   timestamp: string,
   messages: Array<['user' | 'assistant', string, string]> = [],
+  records: Array<Record<string, unknown>> = [],
 ): void {
   mkdirSync(join(codexHome, 'sessions', '2026', '06', '03'), { recursive: true });
   writeFileSync(join(codexHome, 'session_index.jsonl'), [
@@ -1207,6 +1372,15 @@ function writeCodexSession(
         content: [{ type: role === 'user' ? 'input_text' : 'output_text', text: content }],
       },
     })),
+    ...records.map((record) => JSON.stringify(record)),
     '',
   ].join('\n'));
+}
+
+function codexEvent(timestamp: string, payload: Record<string, unknown>): Record<string, unknown> {
+  return {
+    timestamp,
+    type: 'event_msg',
+    payload,
+  };
 }

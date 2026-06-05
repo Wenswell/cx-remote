@@ -165,9 +165,9 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_re
 `GET /api/codex/sessions?nodeId=<node>&cwd=<path>` lists Codex resume sessions recorded for one node directory from that node's SQLite index. Results include thread title, timestamps, origin, node metadata, and the Hub session id when that Codex session is already managed.
 `GET /api/codex/sessions/:threadId/preview?nodeId=<node>` resolves the thread id through the same index, then reads only that `.jsonl` transcript for a small sample with message count and the Hub session id when already managed.
 `POST /api/codex/hooks` accepts Codex hook JSON from `cx-remote notify`, updates native activity by Codex thread id, and publishes `codex.native.activity.updated`.
-`GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Adopted sessions also include `nativeCodexActivity` when hooks reported activity for the same `codexThreadId`. Remote sessions use namespaced ids like `laptop::550e8400-e29b-41d4-a716-446655440000`.
+`GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Adopted sessions also include `nativeCodexActivity` when hooks or adoption snapshots reported activity for the same `codexThreadId`. Remote sessions use namespaced ids like `laptop::550e8400-e29b-41d4-a716-446655440000`.
 `POST /api/sessions` and `POST /api/sessions/adopt` accept optional `nodeId` plus optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
-`POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, the owning Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` stays unique per node Hub store.
+`POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. The owning Hub records the latest native transcript activity snapshot during adoption. When `importTranscript` is true, it also imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` stays unique per node Hub store.
 `PATCH /api/sessions/:id/config` updates an idle Hub session runtime config and restarts its idle app-server runtime on the next prompt. Running or queued sessions reject config updates.
 `GET /api/events` accepts `afterId` and browser `Last-Event-ID` cursors. `Last-Event-ID` takes priority during browser reconnect. Invalid cursor values return `400`. Remote node events are relayed into this stream while the central Hub is running.
 `GET /api/sessions/:id/queue` returns active prompt jobs by default. Use `status=queued|running|done|failed|canceled|all` to inspect a specific queue state or queue history.
@@ -237,7 +237,7 @@ cx-remote adopt --thread <codex-thread-id> --cwd <path> [--node <node-id>] --imp
 POST /api/sessions/adopt { nodeId?, threadId, cwd, importTranscript? }
 ```
 
-Adoption stores the existing Codex thread id on a new Hub session on the owning node. The next prompt resumes that thread with `thread/resume` before `turn/start`. When transcript import is requested, that node Hub copies the native Codex user/assistant messages into Hub messages during adoption.
+Adoption stores the existing Codex thread id on a new Hub session on the owning node. The next prompt resumes that thread with `thread/resume` before `turn/start`. During adoption, that node Hub reads the local Codex transcript once, keeps existing unexpired hook activity when available, records a native activity snapshot when hook activity is missing or expired, and publishes `codex.native.activity.updated` for the new Hub session. When transcript import is requested, it also copies the native Codex user/assistant messages into Hub messages.
 
 Deleting a Hub session removes Hub messages, queue, approvals, control state, and events. It leaves the native Codex thread in Codex storage.
 
@@ -252,7 +252,7 @@ notify = ["cx-remote", "notify"]
 hooks = true
 ```
 
-Set `notifications.feishu.webhook` in `~/.cx-remote/settings.json`, or use `cx-remote config set notifications.feishu.webhook <webhook>`. `cx-remote notify` reads one hook payload from stdin, forwards it to `POST /api/codex/hooks`, and sends a Feishu card for main Codex TUI conversations. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
+Set `notifications.feishu.webhook` in `~/.cx-remote/settings.json`, or use `cx-remote config set notifications.feishu.webhook <webhook>`. `cx-remote notify` reads one hook payload from stdin, forwards it to `POST /api/codex/hooks`, and sends a Feishu card for main Codex TUI conversations. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities` even before the thread is adopted; adoption associates that row with the new Hub session through `codexThreadId`.
 
 State mapping:
 
@@ -263,7 +263,7 @@ State mapping:
 | `PermissionRequest` | `waiting_approval` |
 | `Stop` | `idle` |
 
-`Stop.last_assistant_message` is stored as the latest native assistant preview. `ready`, `working`, and `waiting_approval` expire to `unknown` after a 60 second hook lease. Native activity is exposed through session detail, CLI detail, Web session header, local SSE replay/live events, and central Hub relayed events. Hub-managed `Session.status` continues to describe the Hub-owned runtime.
+`Stop.last_assistant_message` is stored as the latest native assistant preview. Existing unexpired hook activity takes priority over adoption snapshots. Snapshot fallback uses transcript lifecycle records: unfinished `task_started` turns become `working`, `task_complete` becomes `idle`, `turn_aborted` becomes `idle`, and `task_failed` becomes `error`. `ready`, `working`, and `waiting_approval` expire to `unknown` after a 60 second lease. Native activity is exposed through session detail, CLI detail, Web session header, local SSE replay/live events, and central Hub relayed events. Hub-managed `Session.status` continues to describe the Hub-owned runtime.
 
 ## Codex Runtime Flags
 

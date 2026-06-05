@@ -2,6 +2,7 @@ import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, r
 import { homedir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import type { CodexNativeActivity, CodexNativeActivityState } from '../../domain/types.js';
 
 export interface CodexResumeSession {
   id: string;
@@ -120,6 +121,32 @@ export function readCodexSessionTranscript(options: { threadId: string; codexHom
   return readCodexSessionTranscriptFromFile(filePath, index, codexHome);
 }
 
+export function readCodexSessionNativeActivitySnapshot(options: {
+  threadId: string;
+  codexHome?: string;
+  now?: number;
+}): CodexNativeActivity | null {
+  const codexHome = resolve(options.codexHome || defaultCodexHome());
+  const index = loadCodexSessionIndex(codexHome);
+  const threadId = options.threadId.trim();
+  const filePath = findSessionFilePath(join(codexHome, 'sessions'), threadId);
+  if (!filePath) return null;
+  const session = readSessionMeta(filePath, index);
+  if (!session) return null;
+  const snapshot = readTranscriptActivitySnapshot(filePath, options.now ?? Date.now());
+  return {
+    nativeSessionId: threadId,
+    threadId,
+    cwd: session.cwd,
+    transcriptPath: resolve(filePath),
+    turnId: snapshot.turnId,
+    state: snapshot.state,
+    lastEventName: snapshot.lastEventName,
+    lastEventAt: snapshot.lastEventAt,
+    lastAssistantMessage: snapshot.lastAssistantMessage,
+  };
+}
+
 export function readCodexSessionPreview(options: {
   threadId: string;
   codexHome?: string;
@@ -176,6 +203,94 @@ function readTranscriptMessages(filePath: string): CodexTranscriptMessage[] {
     messages.push(message);
   });
   return messages;
+}
+
+function readTranscriptActivitySnapshot(filePath: string, now: number): Pick<
+  CodexNativeActivity,
+  'turnId' | 'state' | 'lastEventName' | 'lastEventAt' | 'lastAssistantMessage'
+> {
+  let state: CodexNativeActivityState = 'idle';
+  let turnId: string | null = null;
+  let lastEventName = 'session_meta';
+  let lastEventAt = now;
+  let lastAssistantMessage: string | null = null;
+
+  readJsonlLines(filePath, (line) => {
+    const record = parseJsonObject(line);
+    if (!record) return;
+    const payload = objectValue(record.payload);
+    if (!payload) return;
+    const eventAt = timestampMs(stringValue(record.timestamp)) || now;
+
+    if (record.type === 'event_msg') {
+      const type = stringValue(payload.type);
+      if (type === 'task_started') {
+        state = 'working';
+        turnId = stringValue(payload.turn_id) || turnId;
+        lastEventName = type;
+        lastEventAt = eventAt;
+        return;
+      }
+      if (type === 'task_complete') {
+        state = 'idle';
+        turnId = null;
+        lastAssistantMessage = stringValue(payload.last_agent_message) || lastAssistantMessage;
+        lastEventName = type;
+        lastEventAt = eventAt;
+        return;
+      }
+      if (type === 'turn_aborted') {
+        state = 'idle';
+        turnId = null;
+        lastEventName = type;
+        lastEventAt = eventAt;
+        return;
+      }
+      if (type === 'task_failed') {
+        state = 'error';
+        turnId = null;
+        lastAssistantMessage = stringValue(payload.last_agent_message) || stringValue(payload.error) || lastAssistantMessage;
+        lastEventName = type;
+        lastEventAt = eventAt;
+        return;
+      }
+      return;
+    }
+
+    if (record.type === 'turn_context') {
+      turnId = stringValue(payload.turn_id) || turnId;
+      if (state !== 'idle') {
+        lastEventName = 'turn_context';
+        lastEventAt = eventAt;
+      }
+      return;
+    }
+
+    if (record.type !== 'response_item') return;
+    const type = stringValue(payload.type);
+    if (type === 'message' && payload.role === 'assistant') {
+      const content = normalizeMessageContent(responseItemText(payload.content));
+      if (content && payload.phase === 'final_answer') lastAssistantMessage = content;
+      return;
+    }
+    if ((type === 'function_call' || type === 'function_call_output' || type === 'reasoning') && state !== 'idle') {
+      lastEventName = type;
+      lastEventAt = eventAt;
+    }
+  });
+
+  const activityState = state as CodexNativeActivityState;
+  return {
+    turnId,
+    state: activityState,
+    lastEventName,
+    lastEventAt: isLeaseBackedActivityState(activityState) ? now : lastEventAt,
+    lastAssistantMessage,
+  };
+}
+
+function isLeaseBackedActivityState(state: CodexNativeActivityState): boolean {
+  return state === 'ready' || state === 'working' || state === 'waiting_approval';
 }
 
 function readSessionIndex(filePath: string): Map<string, SessionIndexEntry> {
