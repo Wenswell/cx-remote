@@ -206,7 +206,7 @@ cx-remote config set server.port 3030
 cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
 cx-remote config set server.accessToken '<central-token>'
 cx-remote config set workspace.roots '[]'
-cx-remote config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+cx-remote config set cluster.peers '[{"id":"mac","name":"macOS","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
 cx-remote hub
 ```
 
@@ -217,12 +217,12 @@ Peer Hub on `10.126.126.2`:
 
 ```bash
 pnpm add -g github:Wenswell/cx-remote#v0.1.4
-cx-remote config set cluster.name mac
+cx-remote config set cluster.name macOS
 cx-remote config set server.host 0.0.0.0
 cx-remote config set server.port 3030
 cx-remote config set server.accessToken '<mac-token>'
 cx-remote config set cluster.peers '[]'
-cx-remote config set workspace.roots /home/wswensw
+cx-remote config set workspace.roots /Users/wswensw/Documents/repos
 cx-remote hub
 ```
 

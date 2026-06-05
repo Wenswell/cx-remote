@@ -116,7 +116,7 @@ The Web page is served at `/apps/cx-remote/`, assets at `/apps/cx-remote/assets/
     "peers": [
       {
         "id": "mac",
-        "name": "Mac",
+        "name": "macOS",
         "url": "http://10.126.126.2:3030",
         "accessToken": "mac-token"
       },
@@ -188,7 +188,7 @@ cx-remote config set server.port 3030
 cx-remote config set server.publicUrl https://gateway.1662803.xyz/apps/cx-remote
 cx-remote config set server.accessToken '<central-token>'
 cx-remote config set workspace.roots '[]'
-cx-remote config set cluster.peers '[{"id":"mac","name":"Mac","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
+cx-remote config set cluster.peers '[{"id":"mac","name":"macOS","url":"http://10.126.126.2:3030","accessToken":"<mac-token>"},{"id":"mint","name":"Linux Mint","url":"http://10.126.126.3:3030","accessToken":"<mint-token>"}]'
 ```
 
 `workspace.roots=[]` makes the gateway Hub a pure aggregator. It proxies peer workspaces, sessions, approvals, and events while keeping the gateway server out of Web workspace selection.
