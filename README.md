@@ -67,7 +67,7 @@ Equivalent:
 cx-remote hub
 ```
 
-Run the interactive setup when you want to configure paths, Codex defaults, Web, and Telegram before starting:
+Run the interactive setup when you want to configure paths, new session defaults, Web, and Telegram before starting:
 
 ```bash
 cx-remote setup
@@ -337,6 +337,7 @@ LOG_CONSOLE
 LOG_PROMPTS
 AUTO_APPROVE_COMMANDS
 AUTO_APPROVE_READONLY
+FEISHU_BOT_WEBHOOK
 ```
 
 See [docs/config.md](docs/config.md) for the full structure.

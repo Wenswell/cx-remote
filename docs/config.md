@@ -14,7 +14,7 @@ Set `CX_REMOTE_HOME` to move the whole state directory, or `CX_REMOTE_SETTINGS` 
 cx-remote setup
 ```
 
-`setup` prompts for the high-frequency fields, validates the result, and writes the settings file. Existing secret values are shown as masked values.
+`setup` prompts for the high-frequency fields, then the session-default fields used by new Hub sessions, validates the result immediately for fixed choices and numeric or URL input, and writes the settings file. Existing secret values are shown as masked values.
 It requires an interactive terminal. Use `cx-remote config set` for scripts and automation.
 
 ## Config CLI

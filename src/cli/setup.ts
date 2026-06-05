@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { defaultConfigHome, expandHome, getSettingsPath, maskSecret, readSettings, serverPublicUrl, writeSettings, type Settings } from '../config/config.js';
 import { CODEX_MODEL_OPTIONS, CODEX_REASONING_EFFORT_OPTIONS } from '../domain/types.js';
 
+const permissionModeChoices = ['default', 'read-only', 'safe-yolo', 'yolo'] as const;
+const logLevelChoices = ['debug', 'info', 'warn', 'error'] as const;
+
 export async function runSetup(): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error('cx-remote setup requires an interactive terminal; use cx-remote config set for scripts');
@@ -19,8 +22,8 @@ export async function runSetup(): Promise<void> {
     const home = defaultConfigHome();
     const workspaceRoots = (await ask(rl, 'Workspace roots', current.workspace.roots.join(','))).split(',').map((item) => item.trim()).filter(Boolean);
     const host = await ask(rl, 'Listen host', current.server.host);
-    const port = Number(await ask(rl, 'Listen port', String(current.server.port)));
-    const publicUrl = await ask(rl, 'Public URL', current.server.publicUrl);
+    const port = await askInteger(rl, 'Listen port', current.server.port, (value) => value >= 1 && value <= 65535, 'Listen port must be an integer from 1 to 65535');
+    const publicUrl = await askUrl(rl, 'Public URL', current.server.publicUrl);
     const clusterName = await ask(rl, 'Node name', current.cluster.name);
     const telegramEnabled = await yesNo(rl, 'Enable Telegram', current.controls.telegram.enabled);
     const telegramBotToken = telegramEnabled ? await askSecret(rl, 'Telegram bot token', current.controls.telegram.botToken) : current.controls.telegram.botToken;
@@ -28,15 +31,17 @@ export async function runSetup(): Promise<void> {
     const telegramAllowedChats = telegramEnabled ? splitList(await ask(rl, 'Telegram allowed chats', current.controls.telegram.allowedChats.join(','))) : current.controls.telegram.allowedChats;
     const requireMention = telegramEnabled ? await yesNo(rl, 'Require mention in groups', current.controls.telegram.requireMention) : current.controls.telegram.requireMention;
     const feishuWebhook = await askSecret(rl, 'Feishu webhook', current.notifications.feishu.webhook);
-    const codexBin = await ask(rl, 'Codex bin', current.agents.codex.bin || 'codex');
-    const codexModel = await askChoice(rl, 'Codex model', ['auto', ...CODEX_MODEL_OPTIONS], current.agents.codex.model);
-    const reasoningEffort = await askChoice(rl, 'Codex reasoning effort', ['default', ...CODEX_REASONING_EFFORT_OPTIONS], current.agents.codex.reasoningEffort);
-    const permissionMode = await ask(rl, 'Permission mode', current.agents.codex.permissionMode);
-    const search = await yesNo(rl, 'Enable Codex search', current.agents.codex.search);
+    console.log('');
+    console.log('Session defaults (new Hub sessions)');
+    const codexBin = await ask(rl, 'Session default Codex bin', current.agents.codex.bin || 'codex');
+    const codexModel = await askChoice(rl, 'Session default Codex model', ['auto', ...CODEX_MODEL_OPTIONS], current.agents.codex.model);
+    const reasoningEffort = await askChoice(rl, 'Session default Codex reasoning effort', ['default', ...CODEX_REASONING_EFFORT_OPTIONS], current.agents.codex.reasoningEffort);
+    const permissionMode = await askChoice(rl, 'Session default permission mode', permissionModeChoices, current.agents.codex.permissionMode);
+    const search = await yesNo(rl, 'Session default Codex search', current.agents.codex.search);
     const autoApproveReadonly = await yesNo(rl, 'Auto approve read-only commands', current.approvals.autoApproveReadonly);
     const autoApproveCommands = splitList(await ask(rl, 'Auto approve commands', current.approvals.autoApproveCommands.join(',')));
-    const timeoutMs = Number(await ask(rl, 'Approval timeout ms', String(current.approvals.timeoutMs)));
-    const logLevel = await ask(rl, 'Log level', current.log.level);
+    const timeoutMs = await askInteger(rl, 'Approval timeout ms', current.approvals.timeoutMs, (value) => value >= 10_000, 'Approval timeout ms must be an integer of at least 10000');
+    const logLevel = await askChoice(rl, 'Log level', logLevelChoices, current.log.level);
     const logFile = await ask(rl, 'Log file', current.log.file);
 
     const next: Settings = {
@@ -129,14 +134,54 @@ async function askChoice<const TChoice extends string>(
   choices: readonly TChoice[],
   current: TChoice,
 ): Promise<TChoice> {
-  const value = await ask(rl, `${label} (${choices.join(', ')})`, current);
-  if (choices.includes(value as TChoice)) return value as TChoice;
-  throw new Error(`${label} must be one of: ${choices.join(', ')}`);
+  while (true) {
+    const value = await ask(rl, `${label} (${choices.join(', ')})`, current);
+    if (choices.includes(value as TChoice)) return value as TChoice;
+    console.log(`Choose one of: ${choices.join(', ')}`);
+  }
 }
 
 async function yesNo(rl: ReturnType<typeof createInterface>, label: string, current: boolean): Promise<boolean> {
-  const answer = (await ask(rl, `${label} (y/n)`, current ? 'y' : 'n')).toLowerCase();
-  return ['y', 'yes', '1', 'true'].includes(answer);
+  while (true) {
+    const answer = (await ask(rl, `${label} (y/n)`, current ? 'y' : 'n')).toLowerCase();
+    if (['y', 'yes', '1', 'true'].includes(answer)) return true;
+    if (['n', 'no', '0', 'false'].includes(answer)) return false;
+    console.log('Enter y or n.');
+  }
+}
+
+async function askInteger(
+  rl: ReturnType<typeof createInterface>,
+  label: string,
+  current: number,
+  validate: (value: number) => boolean,
+  message: string,
+): Promise<number> {
+  while (true) {
+    const raw = await ask(rl, label, String(current));
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && validate(parsed)) return parsed;
+    console.log(message);
+  }
+}
+
+async function askUrl(
+  rl: ReturnType<typeof createInterface>,
+  label: string,
+  current: string,
+): Promise<string> {
+  while (true) {
+    const raw = await ask(rl, label, current);
+    if (!raw) return '';
+    try {
+      const url = new URL(raw);
+      if (url.search || url.hash) throw new Error('query and hash are not allowed');
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('must use http or https');
+      return raw;
+    } catch {
+      console.log('Enter a valid absolute URL.');
+    }
+  }
 }
 
 function splitList(value: string): string[] {
