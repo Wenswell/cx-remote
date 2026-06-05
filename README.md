@@ -164,7 +164,7 @@ notify = ["cx-remote", "notify"]
 hooks = true
 ```
 
-Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.config/codex-tools/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads the Codex hook JSON from stdin, sends it to the local Hub, and forwards the same payload to Feishu for main Codex TUI conversations. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
+Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.cx-remote/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads the Codex hook JSON from stdin, sends it to the local Hub, and forwards the same payload to Feishu for main Codex TUI conversations. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
 
 `cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

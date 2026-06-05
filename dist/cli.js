@@ -578,6 +578,6 @@ function printNotifyHelp() {
         '',
         'Feishu config:',
         '  FEISHU_BOT_WEBHOOK=...',
-        '  ~/.config/codex-tools/notice.env',
+        '  ~/.cx-remote/notice.env',
     ].join('\n'));
 }

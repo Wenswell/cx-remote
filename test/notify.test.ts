@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir, userInfo } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { defaultNoticeEnvPath, forwardNotify } from '../src/controls/notify.js';
@@ -88,17 +88,18 @@ test('forwardNotify reads FEISHU_BOT_WEBHOOK from notice.env', async () => {
   }
 });
 
-test('defaultNoticeEnvPath uses the system home directory', () => {
-  const originalHome = process.env.HOME;
-  process.env.HOME = join(tmpdir(), 'cx-remote-overridden-home');
+test('defaultNoticeEnvPath follows CX_REMOTE_HOME', () => {
+  const originalCxRemoteHome = process.env.CX_REMOTE_HOME;
+  process.env.CX_REMOTE_HOME = join(tmpdir(), 'cx-remote-overridden-home');
 
   try {
-    assert.equal(defaultNoticeEnvPath(), join(userInfo().homedir, '.config', 'codex-tools', 'notice.env'));
+    const expectedHome = process.env.CX_REMOTE_HOME as string;
+    assert.equal(defaultNoticeEnvPath(), join(expectedHome, 'notice.env'));
   } finally {
-    if (originalHome === undefined) {
-      delete process.env.HOME;
+    if (originalCxRemoteHome === undefined) {
+      delete process.env.CX_REMOTE_HOME;
     } else {
-      process.env.HOME = originalHome;
+      process.env.CX_REMOTE_HOME = originalCxRemoteHome;
     }
   }
 });

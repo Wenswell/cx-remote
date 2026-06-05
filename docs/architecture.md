@@ -252,7 +252,7 @@ notify = ["cx-remote", "notify"]
 hooks = true
 ```
 
-Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.config/codex-tools/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads one hook payload from stdin, forwards it to `POST /api/codex/hooks`, and sends a Feishu card for main Codex TUI conversations. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
+Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.cx-remote/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads one hook payload from stdin, forwards it to `POST /api/codex/hooks`, and sends a Feishu card for main Codex TUI conversations. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
 
 State mapping:
 

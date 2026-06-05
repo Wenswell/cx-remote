@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { hostname, userInfo } from 'node:os';
 import { join } from 'node:path';
+import { defaultConfigHome } from '../config/config.js';
 import { asRecord } from '../utils.js';
 
 export type CodexNotifyPayload = {
@@ -81,7 +82,7 @@ const maxHeaderReplyChars = 96;
 const maxAnswerPreviewChars = 360;
 
 export function defaultNoticeEnvPath(): string {
-  return join(userInfo().homedir, '.config', 'codex-tools', 'notice.env');
+  return join(defaultConfigHome(), 'notice.env');
 }
 
 export async function forwardNotify(payloadInput: unknown, options: {
@@ -97,7 +98,7 @@ export async function forwardNotify(payloadInput: unknown, options: {
 
   const webhook = options.webhook || await readWebhook(options.env ?? process.env, options.noticeEnvPath ?? defaultNoticeEnvPath());
   if (!webhook) {
-    throw new Error('FEISHU_BOT_WEBHOOK is required in environment or ~/.config/codex-tools/notice.env');
+    throw new Error('FEISHU_BOT_WEBHOOK is required in environment or ~/.cx-remote/notice.env');
   }
   validateWebhook(webhook);
 
