@@ -246,6 +246,7 @@ Deleting a Hub session removes Hub messages, queue, approvals, control state, an
 External native Codex CLI runs report lifecycle activity through Codex hooks:
 
 ```toml
+# One hook command: argv[0] = cx-remote, argv[1] = codex-hook
 notify = ["cx-remote", "codex-hook"]
 
 [features]

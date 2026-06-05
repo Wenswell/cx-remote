@@ -158,6 +158,7 @@ Web session selection follows a path-first flow: choose a workspace directory, s
 External native Codex CLI runs can report activity for an adopted thread through Codex hooks:
 
 ```toml
+# One hook command: argv[0] = cx-remote, argv[1] = codex-hook
 notify = ["cx-remote", "codex-hook"]
 
 [features]

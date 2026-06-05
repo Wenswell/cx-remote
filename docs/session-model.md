@@ -41,6 +41,7 @@ Adopt Codex session
 ```text
 External native Codex CLI activity
   ~/.codex/config.toml
+    # One hook command: argv[0] = cx-remote, argv[1] = codex-hook
     notify = ["cx-remote", "codex-hook"]
     [features]
     hooks = true
