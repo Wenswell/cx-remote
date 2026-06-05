@@ -140,7 +140,7 @@ cx-remote session <session-id>
 cx-remote messages <session-id>
 cx-remote new --cwd /home/ilove/Documents/repos/cx-remote
 cx-remote adopt --thread <codex-thread-id> --cwd /home/ilove/Documents/repos/cx-remote --import
-cx-remote codex-hook < hook-payload.json
+cx-remote notify < payload.json
 cx-remote session-config <session-id> --search --permission-mode yolo
 cx-remote send <session-id> "check git status"
 cx-remote attach <session-id>
@@ -155,27 +155,16 @@ cx-remote doctor
 
 Web session selection follows a path-first flow: choose a workspace directory, select an existing Hub-managed session in that directory, preview and adopt one of the Codex sessions recorded for that directory, or create a new Hub session there. Web adoption imports the native Codex transcript into Hub messages before opening the session. `cx-remote adopt` creates a Hub session that points to an explicit Codex thread id for scripts and terminal use; add `--import` to import the stored transcript. Future prompts go through the Hub, so Web, Telegram, and CLI stay synchronized. Deleting the Hub session removes Hub data and leaves the native Codex thread in Codex storage.
 
-External native Codex CLI runs can report activity for an adopted thread through Codex hooks:
+External native Codex CLI runs can report activity for an adopted thread through `cx-remote notify`:
 
 ```toml
-# Use one wrapper command so existing hooks keep working.
-notify = ["codex-hook-fanout"]
+notify = ["cx-remote", "notify"]
 
 [features]
 hooks = true
 ```
 
-The wrapper should forward the same stdin payload to your existing hook command and to `cx-remote codex-hook`. `cx-remote codex-hook` reads the Codex hook JSON from stdin and sends it to the local Hub. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
-
-Example wrapper:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-payload="$(cat)"
-printf '%s' "$payload" | codex-notice hook
-printf '%s' "$payload" | cx-remote codex-hook
-```
+Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.config/codex-tools/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads the Codex hook JSON from stdin, sends it to the local Hub, and forwards the same payload to Feishu for main Codex TUI conversations. Session detail then shows `ready`, `working`, `waiting_approval`, `idle`, or `unknown` as `nativeCodexActivity`. Active hook states expire to `unknown` after 60 seconds without a newer hook event. Hub-managed runtime status keeps its existing `idle`, `running`, `waiting_approval`, and `error` states.
 
 `cx-remote` stores session runtime as `permissionMode`, `search`, model, and reasoning effort:
 

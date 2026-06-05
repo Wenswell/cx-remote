@@ -6,6 +6,7 @@ import { loadConfig, serverBasePath } from './config/config.js';
 import { runSetup } from './cli/setup.js';
 import { runDoctor } from './cli/doctor.js';
 import { runConfigCommand } from './cli/config.js';
+import { forwardNotify } from './controls/notify.js';
 import { decodeSseFrame } from './runtime/sse.js';
 import { CLI_CONTROL_TTL_MS, cliControlIdentity } from './controls/control-actions.js';
 import type { CodexSessionConfigPatch } from './domain/types.js';
@@ -50,6 +51,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       client = undefined;
     }
     await runDoctor(client);
+    return;
+  }
+
+  if (command === 'notify' && (hasFlag(argv, '--help') || hasFlag(argv, '-h'))) {
+    printNotifyHelp();
     return;
   }
 
@@ -106,10 +112,11 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
       }), null, 2));
       return;
     }
-    case 'codex-hook': {
+    case 'notify': {
       const payload = await readJsonFromStdin();
-      const result = await client.post('/api/codex/hooks', payload);
-      if (hasFlag(argv, '--json')) console.log(JSON.stringify(result, null, 2));
+      const activity = await client.post('/api/codex/hooks', payload);
+      const feishu = await forwardNotify(payload);
+      if (hasFlag(argv, '--json')) console.log(JSON.stringify({ ...(activity as Record<string, unknown>), feishu }, null, 2));
       return;
     }
     case 'send': {
@@ -326,9 +333,9 @@ function printMaybeJson(value: unknown, json: boolean, formatter: (value: unknow
 }
 
 async function readJsonFromStdin(): Promise<unknown> {
-  if (process.stdin.isTTY) throw new Error('Usage: cx-remote codex-hook < payload.json');
+  if (process.stdin.isTTY) throw new Error('Usage: cx-remote notify < payload.json');
   const text = await readStream(process.stdin);
-  if (!text.trim()) throw new Error('Codex hook payload is empty');
+  if (!text.trim()) throw new Error('Notify payload is empty');
   return JSON.parse(text) as unknown;
 }
 
@@ -576,7 +583,7 @@ function printHelp(): void {
     '    [--import]',
     '    [--model <model>] [--reasoning-effort <effort>] [--search|--no-search] [--permission-mode <mode>]',
     '    [--dangerously-bypass-approvals-and-sandbox]',
-    '  cx-remote codex-hook                   Forward a native Codex hook payload from stdin',
+    '  cx-remote notify                       Forward a native hook payload from stdin',
     '  cx-remote send <session-id> <text>    Send message',
     '  cx-remote attach <session-id>         Attach shared CLI to a session',
     '  cx-remote attach <session-id> --claim Attach with exclusive control',
@@ -589,5 +596,25 @@ function printHelp(): void {
     '  cx-remote doctor                      Check local Hub',
     '',
     'Settings: ~/.cx-remote/settings.json',
+  ].join('\n'));
+}
+
+function printNotifyHelp(): void {
+  console.log([
+    'cx-remote notify',
+    '',
+    'Usage:',
+    '  cx-remote notify < payload.json',
+    '  cx-remote notify --json < payload.json',
+    '',
+    'Codex config:',
+    '  notify = ["cx-remote", "notify"]',
+    '',
+    '  [features]',
+    '  hooks = true',
+    '',
+    'Feishu config:',
+    '  FEISHU_BOT_WEBHOOK=...',
+    '  ~/.config/codex-tools/notice.env',
   ].join('\n'));
 }

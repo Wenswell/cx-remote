@@ -41,27 +41,18 @@ Adopt Codex session
 ```text
 External native Codex CLI activity
   ~/.codex/config.toml
-    # Use one wrapper command so existing hooks keep working.
-    notify = ["codex-hook-fanout"]
+    notify = ["cx-remote", "notify"]
     [features]
     hooks = true
       │ hook JSON on stdin
       ▼
-  codex-hook-fanout
+  cx-remote notify
       │ POST /api/codex/hooks
       ▼
   codex_native_activities row by Codex thread id
       │
       ├─ GET /api/sessions/:id -> nativeCodexActivity
       └─ GET /api/events -> codex.native.activity.updated
-```
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-payload="$(cat)"
-printf '%s' "$payload" | codex-notice hook
-printf '%s' "$payload" | cx-remote codex-hook
 ```
 
 ## Rules
@@ -78,7 +69,7 @@ printf '%s' "$payload" | cx-remote codex-hook
 - External native Codex CLI activity is tracked separately from the Hub-managed session status. Hooks update `nativeCodexActivity` for the matching `codexThreadId`; the Hub-owned `Session.status` keeps its existing managed-runtime meaning.
 - Hook state mapping is `SessionStart -> ready`, `UserPromptSubmit` and tool hooks -> `working`, `PermissionRequest -> waiting_approval`, and `Stop -> idle`. `Stop.last_assistant_message` is stored as the latest native reply preview.
 - `ready`, `working`, and `waiting_approval` use a 60 second lease. When no newer hook arrives in that window, the visible native state becomes `unknown`.
-- Native activity is persisted in SQLite and published as `codex.native.activity.updated`. Session detail, CLI `cx-remote session`, Web session header, local SSE, and central Hub relayed SSE expose the same activity object.
+- Native activity is persisted in SQLite and published as `codex.native.activity.updated`. Session detail, CLI `cx-remote session`, Web session header, local SSE, and central Hub relayed SSE expose the same activity object. `cx-remote notify` can also forward the same payload to Feishu when `FEISHU_BOT_WEBHOOK` is configured in the environment or `~/.config/codex-tools/notice.env`.
 - Session runtime config is stored on the Hub session. New sessions inherit `codex.*` settings, creation/adoption flags can override them, and idle sessions can be changed with `PATCH /api/sessions/:id/config` or `cx-remote session-config`.
 - A central Hub can proxy multiple remote Hub peers over the LAN. Remote sessions keep their runtime, queue, approvals, and persistence on the owning node; the central Hub aggregates browsing, switching, and notifications.
 - Search is enabled by default. `codex.model=auto` and `codex.reasoningEffort=default` leave those choices to Codex; Web displays the inherited values as `Default(<resolved value>)`.

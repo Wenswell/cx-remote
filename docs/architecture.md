@@ -164,7 +164,7 @@ API requests are authorized by `Authorization: Bearer <token>` or the Web `cx_re
 `GET /api/sessions?nodeId=<node>&cwd=<path>` lists Hub-managed sessions for one node directory, ordered by Hub session `updatedAt`. Without `cwd`, `GET /api/sessions` lists recent sessions across all reachable nodes.
 `GET /api/codex/sessions?nodeId=<node>&cwd=<path>` lists Codex resume sessions recorded for one node directory from that node's SQLite index. Results include thread title, timestamps, origin, node metadata, and the Hub session id when that Codex session is already managed.
 `GET /api/codex/sessions/:threadId/preview?nodeId=<node>` resolves the thread id through the same index, then reads only that `.jsonl` transcript for a small sample with message count and the Hub session id when already managed.
-`POST /api/codex/hooks` accepts Codex hook JSON from `cx-remote codex-hook`, updates native activity by Codex thread id, and publishes `codex.native.activity.updated`.
+`POST /api/codex/hooks` accepts Codex hook JSON from `cx-remote notify`, updates native activity by Codex thread id, and publishes `codex.native.activity.updated`.
 `GET /api/sessions/:id` returns a full session snapshot plus `eventCursor`, the latest persisted event id for that session. Adopted sessions also include `nativeCodexActivity` when hooks reported activity for the same `codexThreadId`. Remote sessions use namespaced ids like `laptop::550e8400-e29b-41d4-a716-446655440000`.
 `POST /api/sessions` and `POST /api/sessions/adopt` accept optional `nodeId` plus optional `config` with `model`, `reasoningEffort`, `permissionMode`, and `search`.
 `POST /api/sessions/adopt` accepts `threadId`, `cwd`, optional `title`, and optional `importTranscript`. When `importTranscript` is true, the owning Hub imports the native Codex transcript into Hub messages before opening the session. `codexThreadId` stays unique per node Hub store.
@@ -246,14 +246,13 @@ Deleting a Hub session removes Hub messages, queue, approvals, control state, an
 External native Codex CLI runs report lifecycle activity through Codex hooks:
 
 ```toml
-# Use one wrapper command so existing hooks keep working.
-notify = ["codex-hook-fanout"]
+notify = ["cx-remote", "notify"]
 
 [features]
 hooks = true
 ```
 
-The wrapper should forward the same stdin payload to your existing hook command and to `cx-remote codex-hook`. `cx-remote codex-hook` reads one hook payload from stdin and forwards it to `POST /api/codex/hooks`. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
+Set `FEISHU_BOT_WEBHOOK` in the environment, or create `~/.config/codex-tools/notice.env` with `FEISHU_BOT_WEBHOOK=...`. `cx-remote notify` reads one hook payload from stdin, forwards it to `POST /api/codex/hooks`, and sends a Feishu card for main Codex TUI conversations. The Hub resolves the Codex thread id from `transcript_path` metadata when available, and uses `session_id` when transcript metadata is unavailable. The latest activity is stored in `codex_native_activities`.
 
 State mapping:
 
